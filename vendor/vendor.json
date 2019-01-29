@@ -1,0 +1,19 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "gycRS0sSBgqS5u2RaIvU/3J9RE0=",
+			"path": "github.com/google/gopacket",
+			"revision": "90caebb54a7ad26cde945bbb3b63652877de4c56",
+			"revisionTime": "2019-01-14T16:17:55Z"
+		},
+		{
+			"checksumSHA1": "MfaB3DLFTXD/K/2K/Zrv/W/x7uM=",
+			"path": "github.com/google/gopacket/bytediff",
+			"revision": "90caebb54a7ad26cde945bbb3b63652877de4c56",
+			"revisionTime": "2019-01-14T16:17:55Z"
+		}
+	],
+	"rootPath": "dhcptest"
+}
