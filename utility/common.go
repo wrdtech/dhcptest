@@ -1,14 +1,12 @@
 package utility
 
 import (
-	"bytes"
 	"dhcptest/layers"
 	"encoding/binary"
 	"fmt"
 	"github.com/google/gopacket"
 	"math/rand"
 	"net"
-	"strconv"
 	"time"
 )
 
@@ -52,36 +50,6 @@ func GetInterfaceByIP(ip string, validip map[string]net.Interface) (*net.Interfa
 		return nil, fmt.Errorf("invalid ip:%s", ip)
 	}
 	return &iface, nil
-}
-
-func ParseOption(options string) (layers.DHCPOptions ,error){
-	var code,value string
-	var dhcpOptions layers.DHCPOptions
-	buf := bytes.Buffer{}
-	for i:=0 ; i < len(options); i++ {
-		switch options[i] {
-		case '=':
-			code = buf.String()
-			buf.Reset()
-		case ';':
-			if len(code) == 0 {
-				return dhcpOptions, fmt.Errorf("%s invalid option code", code)
-			}
-
-			optionCode, err := strconv.Atoi(code)
-			if err != nil {
-				return dhcpOptions, err
-			}
-
-			value = buf.String()
-			dhcpOption, err := layers.ParseString(layers.DHCPOpt(optionCode), value)
-			dhcpOptions = append(dhcpOptions, dhcpOption)
-		default:
-			buf.WriteRune(rune(options[i]))
-			fmt.Println(buf.String())
-		}
-	}
-	return dhcpOptions, nil
 }
 
 func RandomMac() string {

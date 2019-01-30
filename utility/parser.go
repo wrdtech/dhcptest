@@ -3,10 +3,13 @@ package utility
 import (
 	"bytes"
 	"dhcptest/layers"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type optionFormat string
@@ -18,6 +21,8 @@ const (
 	 BoolForamt        optionFormat = "bool"
 	 DHCPOptionFormat  optionFormat = "option"
 	 DHCPMessageFormat optionFormat = "message"
+	 MacFormat         optionFormat = "mac"
+	 DHCPTimeFormat    optionFormat = "time"
 )
 
 type parse func(string) ([]byte, error)
@@ -27,78 +32,121 @@ type Parser struct{
 }
 
 func (parser *Parser) Init() {
+	parser.parser = make(map[string]parse)
 	parser.parser[string(IPFormat)] = parseIP
-//	parser.parser[string(HexFormat)] = parseHex
-//	parser.parser[string(StringFormat)] = parseString
+	parser.parser[string(HexFormat)] = parseHex
+	parser.parser[string(StringFormat)] = parseString
+	parser.parser[string(BoolForamt)] = parseBool
+	parser.parser[string(DHCPOptionFormat)] = parseOption
+	parser.parser[string(DHCPMessageFormat)] = parseMessage
+	parser.parser[string(MacFormat)] = parseMac
+	parser.parser[string(DHCPTimeFormat)] = parseTime
 }
 
 func (parser *Parser) Parse(str string) (layers.DHCPOptions, error) {
+	//define variable
 	var code, value string
 	var format optionFormat
 	var dhcpOptions layers.DHCPOptions
 	buf := bytes.Buffer{}
+
+	//define parse function
+	parseOption := func() error {
+		if len(code) == 0 {
+			return fmt.Errorf("missing option code")
+		}
+		optionCode, err := strconv.Atoi(code)
+		if err != nil {
+			return fmt.Errorf("code parser error: %s", err)
+		}
+		//format
+		if len(format) == 0 {
+			format = StringFormat
+		}
+		//value
+		value = buf.String()
+
+		//get parser
+		valueParser,ok := parser.parser[string(format)]
+		if !ok {
+			return fmt.Errorf("%s unsupport value format", format)
+		}
+
+		//parse
+		data, err := valueParser(value)
+		if err != nil {
+			return err
+		}
+		//fmt.Printf("%+v\n", data)
+
+		dhcpOption := layers.NewDHCPOption(layers.DHCPOpt(optionCode),data)
+		dhcpOptions = append(dhcpOptions, dhcpOption)
+		return nil
+	}
+
+	fmt.Println(str)
+
+	hasLeftBracket := false
+	hasRightBracket := false
+
+	//start parse
 	for i:=0 ; i < len(str); i++ {
 		switch str[i] {
 		case '=':
-			if len(format) == 0 {
+			if hasLeftBracket != hasRightBracket {
+				return dhcpOptions, fmt.Errorf("左括号和右括号应成对出现")
+			}
+			if !hasLeftBracket {
 				code = buf.String()
 				buf.Reset()
 			}
+			//fmt.Println(code)
+			//fmt.Println(format)
 		case ';':
-			//code
-			if len(code) == 0 {
-				return dhcpOptions, fmt.Errorf("missing option code")
-			}
-			optionCode, err := strconv.Atoi(code)
-			if err != nil {
-				return dhcpOptions,  fmt.Errorf("code parser error: %s", err)
-			}
-			//format
-			if len(format) == 0 {
-				format = StringFormat
-			}
-			//value
-			value = buf.String()
-
-			//get parser
-			valueParser,ok := parser.parser[string(format)]
-			if !ok {
-				return dhcpOptions, fmt.Errorf("%s unsupport value format", format)
-			}
-
-			//parse
-			data, err := valueParser(value)
+			err := parseOption()
 			if err != nil {
 				return dhcpOptions, err
 			}
 
-			dhcpOption := layers.NewDHCPOption(layers.DHCPOpt(optionCode),data)
-			dhcpOptions = append(dhcpOptions, dhcpOption)
+			hasLeftBracket = false
+			hasRightBracket = false
+			code = ""
+			value = ""
+			format = ""
 			buf.Reset()
 		case '[':
+			hasLeftBracket = true
 		    code = buf.String()
 			buf.Reset()
 		case ']':
+			hasRightBracket = true
 			format = optionFormat(buf.String())
 			buf.Reset()
 		default:
 			buf.WriteRune(rune(str[i]))
-			fmt.Println(buf.String())
+			if i == len(str) - 1 {
+				err := parseOption()
+				if err != nil {
+					return dhcpOptions, err
+				}
+			}
 		}
 	}
 	return dhcpOptions, nil
 }
 
-/*
 func parseHex(value string) ([]byte, error) {
-
-
+	data, err := hex.DecodeString(value)
+	if err != nil {
+		return data, err
+	}
+	return data, nil
 }
 
 func parseString(value string) ([]byte, error){
-
+	data := []byte(value)
+	return data, nil
 }
-*/
 
 func parseBool(value string) ([]byte, error) {
 	var data []byte
@@ -118,25 +166,13 @@ func parseOption(value string) ([]byte, error) {
 	var data []byte
 	params := strings.Split(value, ",")
 	for _, str := range params {
-
-		if str == "subnet mask" {
-			data = append(data, byte(layers.DHCPOptSubnetMask))
-		} else if str == "router" {
-			data = append(data, byte(layers.DHCPOptRouter))
-		} else if str == "time server" {
-			data = append(data, byte(layers.DHCPOptTimeServer))
-		} else if str == "domain name server" {
-			data = append(data, byte(layers.DHCPOptDNS))
-		} else if str == "doamin name" {
-			data = append(data, byte(layers.DHCPOptDomainName))
-		} else if str == "interface mtu" {
-			data = append(data, byte(layers.DHCPOptInterfaceMTU))
-		} else if str == "network time protocol servers" {
-			data = append(data, byte(layers.DHCPOptNTPServers))
-		} else {
-
+		optionCode, ok := optionList[str]
+		if !ok {
+			return data, fmt.Errorf("%s unsupport option", str)
 		}
+		data = append(data, byte(optionCode))
 	}
+	return data, nil
 }
 
 func parseMessage(value string) ([]byte, error) {
@@ -157,15 +193,17 @@ func parseMessage(value string) ([]byte, error) {
 		data = append(data, byte(layers.DHCPMsgTypeRelease))
 	} else if strings.EqualFold(value, "decline") {
 		data = append(data, byte(layers.DHCPMsgTypeDecline))
-	} else {
+	} else if strings.EqualFold(value, "unspecified"){
 		data = append(data, byte(layers.DHCPMsgTypeUnspecified))
+	} else {
+		return data, fmt.Errorf("%s unsupport message type", value)
 	}
 	return data, nil
 }
 
 func parseIP(value string) ([]byte, error) {
 	var data []byte
-	ipAddrs := strings.Split(",", value)
+	ipAddrs := strings.Split(value, ",")
 	for _, ipAddr := range ipAddrs {
 		ip := net.ParseIP(ipAddr)
 		if ip == nil {
@@ -177,5 +215,29 @@ func parseIP(value string) ([]byte, error) {
 		}
 		data = append(data, []byte(ip)...)
 	}
+	return data, nil
+}
+
+func parseMac(value string) ([]byte, error) {
+	var data []byte
+	macAddrs := strings.Split(value, ",")
+	for _, macAddr := range macAddrs {
+		mac, err := net.ParseMAC(macAddr)
+		if err != nil {
+			return data, fmt.Errorf("%s is not a valid mac address", macAddr)
+		}
+		data = append(data, []byte(mac)...)
+	}
+	return data, nil
+}
+
+func parseTime(value string) ([]byte, error) {
+	data := make([]byte, 4)
+	sec, err := time.ParseDuration(value)
+	if err != nil {
+		return data, err
+
+	}
+	binary.BigEndian.PutUint32(data, uint32(sec/time.Second))
 	return data, nil
 }

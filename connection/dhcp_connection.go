@@ -15,6 +15,8 @@ import (
 
 const responseTimeout = time.Second * 5
 
+var OnlyDiscover = false
+
 type Callback func(*utility.Lease)
 
 //DhcpClient
@@ -63,9 +65,11 @@ func (dc *DhcpClient) AddParamRequest(dhcpOpt layers.DHCPOpt) {
 }
 
 func (dc *DhcpClient) Start() {
+	/*
 	for _, param := range DefaultParamsRequestList {
 		dc.AddParamRequest(param)
 	}
+	*/
 	dc.AddOption(layers.DHCPOptHostname, []byte(dc.Hostname))
 
 	if dc.notify != nil {
@@ -120,7 +124,11 @@ func (dc *DhcpClient) run() {
 func (dc *DhcpClient) runOnce() {
 	var err error
 	if dc.Lease == nil || dc.rebind {
-		err = dc.withConnection(dc.discoverAndRequest)
+		if OnlyDiscover {
+			err = dc.withConnection(dc.onlyDiscover)
+		} else {
+			err = dc.withConnection(dc.discoverAndRequest)
+		}
 		if err == nil {
 			dc.rebind = false
 		}
@@ -136,7 +144,7 @@ func (dc *DhcpClient) runOnce() {
 		}
 		return
 	}
-
+/*
 	select {
 	case <- dc.notify:
 		return
@@ -149,6 +157,7 @@ func (dc *DhcpClient) runOnce() {
     case <-time.After(time.Until(dc.Lease.Renew)):
     	break
 	}
+*/
 }
 
 func (dc *DhcpClient) unbound() {
@@ -174,6 +183,14 @@ func (dc *DhcpClient) withConnection(f func() error) error {
 
 	return f()
 
+}
+
+func (dc *DhcpClient) onlyDiscover() error {
+	_, err := dc.discover()
+	if err!= nil {
+		return err
+	}
+	return nil
 }
 
 func (dc *DhcpClient) discoverAndRequest() error {
@@ -337,7 +354,8 @@ func (dc *DhcpClient) newPacket(msgType layers.DHCPMsgType, options []layers.DHC
 		ClientHWAddr: dc.ClientMac,
 		HardwareLen: uint8(len([]byte(dc.ClientMac))),
 		Flags: uint16(layers.BroadcastFlag),
-		ClientIP: dc.laddr.IP,
+		//ClientIP: dc.laddr.IP,
+		ClientIP: net.ParseIP("0.0.0.0"),
 		YourClientIP: net.ParseIP("0.0.0.0"),
 		NextServerIP: net.ParseIP("0.0.0.0"),
 		RelayAgentIP: net.ParseIP("0.0.0.0"),

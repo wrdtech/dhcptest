@@ -2,7 +2,6 @@ package main
 
 import (
 	"dhcptest/connection"
-	"dhcptest/layers"
 	"dhcptest/utility"
 	"fmt"
 	"log"
@@ -12,19 +11,20 @@ import (
 )
 
 var (
-	help       bool
-	bindIP     string
-	bindMac    string
-	secs       time.Duration
-	quiet      bool
-	query      bool
-	wait       bool
-	option     string
-	request    string
-	printOnly  string
-	timeout    time.Duration
-	try        int
-	requestIP  string
+	help         bool
+	bindIP       string
+	bindMac      string
+	secs         time.Duration
+	quiet        bool
+	query        bool
+	wait         bool
+	option       string
+	request      string
+	printOnly    string
+	timeout      time.Duration
+	try          int
+	requestIP    string
+	onlyDiscover bool
 )
 
 func init() {
@@ -49,6 +49,7 @@ func main() {
 		return
 	}
 
+	/*
 	//requestIP
 	requestIPByte := net.ParseIP(requestIP)
 	if requestIPByte == nil {
@@ -60,18 +61,26 @@ func main() {
 		fmt.Println("only support ipv4 for now")
 		return
 	}
+	*/
 
 	//option
-	dhcpOptions,err := utility.ParseOption(option)
+	parser := &utility.Parser{}
+	parser.Init()
+	dhcpOptions,err := parser.Parse(option)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	dhcpOptions = append(dhcpOptions, layers.NewDHCPOption(layers.DHCPOptRequestIP, requestIPByte), layers.NewDHCPOption(layers.DHCPOptClientID, clientID))
+	//dhcpOptions = append(dhcpOptions, layers.NewDHCPOption(layers.DHCPOptRequestIP, requestIPByte), layers.NewDHCPOption(layers.DHCPOptClientID, clientID))
+	//dhcpOptions = append(dhcpOptions, layers.NewDHCPOption(layers.DHCPOptClientID, clientID))
+
+	//fmt.Printf("dhcpOptions: %+v\n", dhcpOptions)
 
 	//classID := []byte("MSFT 5.0")
 
 	hostname, _ := os.Hostname()
+
+	connection.OnlyDiscover  = onlyDiscover
 
 	dc := connection.DhcpClient{
 		BindIP: net.ParseIP(bindIP),
@@ -136,6 +145,9 @@ func getOpts() {
 			break
 		case &utility.CommandRequestIP:
 			requestIP = *command.Value.(*string)
+			break
+		case &utility.CommandOnlyDisover:
+			onlyDiscover = *command.Value.(*bool)
 			break
 		default:
 			break

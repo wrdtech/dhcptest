@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"net"
-	"strings"
 )
 
 // DHCPOp rerprents a bootp operation
@@ -690,7 +689,7 @@ func (o DHCPOpt) String() string {
 	case DHCPOptTFTPServerAddress:
 		return "TFTP server address"
 	case DHCPOptPXELinuxMagic:
-		return "pxelinux.magic (string) = F1:00:74:7E (241.0.116.126)"
+		return "pxelinux.magic (string) F1:00:74:7E (241.0.116.126)"
 	case DHCPOptPXELinuxConfigFile:
 		return "pxelinux.configfile (text)"
 	case DHCPOptPXELinuxPathPrefix:
@@ -715,70 +714,13 @@ type DHCPOption struct {
 	Data   []byte
 }
 
-func ParseString(t DHCPOpt, value string) (DHCPOption, error) {
-	var data []byte
-	switch t {
-	case DHCPOptHostname, DHCPOptMeritDumpFile, DHCPOptDomainName, DHCPOptRootPath,
-		DHCPOptExtensionsPath, DHCPOptNISDomain, DHCPOptNetBIOSTCPScope, DHCPOptXFontServer,
-		DHCPOptXDisplayManager, DHCPOptMessage, DHCPOptDomainSearch: // string
-		data = []byte(value)
-	case DHCPOptMessageType:
-		if value == "unspecified" {
-			data = []byte{byte(DHCPMsgTypeUnspecified)}
-		} else if value == "discover" {
-			data = []byte{byte(DHCPMsgTypeDiscover)}
-		} else if value == "request" {
-			data = []byte{byte(DHCPMsgTypeRequest)}
-		} else if value == "release" {
-			data = []byte{byte(DHCPMsgTypeRelease)}
-		} else if value == "inform" {
-			data = []byte{byte(DHCPMsgTypeInform)}
-		} else {
-			return DHCPOption{}, fmt.Errorf("%s unsupported message type of the client", value)
-		}
-
-	case DHCPOptSubnetMask, DHCPOptServerID, DHCPOptBroadcastAddr,
-		DHCPOptSolicitAddr, DHCPOptRequestIP: // net.IP
-		ipAddr := net.ParseIP(value).To4()
-		if ipAddr == nil {
-			return DHCPOption{}, fmt.Errorf("%s not a valid IPV4 address", value)
-		}
-		data = []byte(ipAddr)
-
-	case DHCPOptT1, DHCPOptT2, DHCPOptLeaseTime, DHCPOptPathMTUAgingTimeout,
-		DHCPOptARPTimeout, DHCPOptTCPKeepAliveInt: // uint32
-	case DHCPOptParamsRequest:
-		params := strings.Split(value, ",")
-		for _, str := range params {
-			if str == "subnet mask" {
-				data = append(data, byte(DHCPOptSubnetMask))
-			} else if str == "router" {
-				data = append(data, byte(DHCPOptRouter))
-			} else if str == "time server" {
-				data = append(data, byte(DHCPOptTimeServer))
-			} else if str == "domain name server" {
-				data = append(data, byte(DHCPOptDNS))
-			} else if str == "doamin name" {
-				data = append(data, byte(DHCPOptDomainName))
-			} else if str == "interface mtu" {
-				data = append(data, byte(DHCPOptInterfaceMTU))
-			} else if str == "network time protocol servers" {
-				data = append(data, byte(DHCPOptNTPServers))
-			}
-		}
-	default:
-  	}
-	return NewDHCPOption(t, data), nil
-
-}
-
 // String returns a string version of a DHCP Option.
 func (o DHCPOption) String() string {
 	switch o.Type {
 
 	case DHCPOptHostname, DHCPOptMeritDumpFile, DHCPOptDomainName, DHCPOptRootPath,
 		DHCPOptExtensionsPath, DHCPOptNISDomain, DHCPOptNetBIOSTCPScope, DHCPOptXFontServer,
-		DHCPOptXDisplayManager, DHCPOptMessage, DHCPOptDomainSearch: // string
+		DHCPOptXDisplayManager, DHCPOptMessage, DHCPOptDomainSearch, DHCPOptClassID: // string
 		return fmt.Sprintf("%d (%s): %s", byte(o.Type), o.Type, string(o.Data))
 
 	case DHCPOptMessageType:
