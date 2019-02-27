@@ -18,10 +18,25 @@ type Command struct {
 	Value interface{}
 }
 
-var ValidIP = make(map[string]net.Interface)
-var optionList = make(map[string]layers.DHCPOpt)
+type RequestParams []string
+
+func (r *RequestParams) Set(value string) error {
+	*r = append(*r, value)
+	return nil
+}
+
+func (r *RequestParams) String() string {
+	return fmt.Sprint([]string(*r))
+}
+
+func (r *RequestParams) Get() interface{} {
+	return []string(*r)
+}
 
 var (
+	ValidIP = make(map[string]net.Interface)
+	optionRequest = RequestParams{}
+
 	CommandHelp           = CommandFlag{Name: "help",         usage: "  --help          get a list of command-line options"}
 	CommandOptionHelp     = CommandFlag{Name: "optionhelp",   usage: "  --optionhelp    get a list of dhcp option"}
 	CommandIPList         = CommandFlag{Name: "iplist",       usage: "  --iplist        get a list of avaliable ip(only v4)"}
@@ -38,9 +53,9 @@ var (
 	CommandTry            = CommandFlag{Name: "tries",        usage: "  --tries N       Send N DHCP discover packets after each timeout interval.\r\n\t\t  Specify N=0 to retry indefinitely."}
 	CommandRequestIP      = CommandFlag{Name: "requestip",    usage: "  --requestip IP  Specify the IP Address you want to get for the client mac"}
 	CommandOnlyDisover    = CommandFlag{Name: "onlydiscover", usage: "  --onlydiscover  only send discover packet"}
-)
 
-var CommandList = []Command{
+
+	CommandList = []Command{
 	Command{CommandFlag: &CommandHelp, Value: flag.Bool(CommandHelp.Name, false, CommandHelp.usage)},
 	Command{CommandFlag: &CommandOptionHelp, Value: flag.Bool(CommandOptionHelp.Name, false, CommandOptionHelp.usage)},
 	Command{CommandFlag: &CommandIPList, Value: flag.Bool(CommandIPList.Name, false, CommandIPList.usage)},
@@ -50,14 +65,15 @@ var CommandList = []Command{
 	Command{CommandFlag: &CommandQuiet, Value: flag.Bool(CommandQuiet.Name, false, CommandQuiet.usage)},
 	Command{CommandFlag: &CommandQuery, Value: flag.Bool(CommandQuery.Name, false, CommandQuery.usage)},
 	Command{CommandFlag: &CommandWait, Value: flag.Bool(CommandWait.Name, false, CommandWait.usage)},
-	Command{CommandFlag: &CommandOption, Value: flag.String(CommandOption.Name, "", CommandOption.usage)},
+	Command{CommandFlag: &CommandOption, Value: &optionRequest},
 	Command{CommandFlag: &CommandRequest, Value: flag.String(CommandRequest.Name, "", CommandRequest.usage)},
 	Command{CommandFlag: &CommandPrint, Value: flag.String(CommandPrint.Name, "", CommandPrint.usage)},
 	Command{CommandFlag: &CommandTimeOut, Value: flag.Duration(CommandTimeOut.Name, 10*time.Second, CommandTimeOut.usage)},
 	Command{CommandFlag: &CommandTry, Value: flag.Int(CommandTry.Name, 1, CommandTry.usage)},
 	Command{CommandFlag: &CommandRequestIP, Value: flag.String(CommandRequestIP.Name, "", CommandRequestIP.usage)},
 	Command{CommandFlag: &CommandOnlyDisover, Value: flag.Bool(CommandOnlyDisover.Name,  false, CommandOnlyDisover.usage)},
-}
+    }
+)
 
 func (c Command) Print() {
 	switch c.CommandFlag {
@@ -69,8 +85,12 @@ func (c Command) Print() {
 	case &CommandOptionHelp:
 		fmt.Println("dhcpoption list")
 		fmt.Println("  code\tdescription")
-		for str, opt := range optionList {
-			fmt.Printf("  %d\t%s\n", byte(opt), str)
+		for i := 0; i <= 255; i++ {
+			var opt = layers.DHCPOpt(byte(i))
+			if opt.String() == "Unknown" {
+				continue
+			}
+			fmt.Printf("  %d\t%s\n", byte(opt), opt)
 		}
 
 	case &CommandIPList:
@@ -101,12 +121,7 @@ func init() {
 		}
 	}
 
-	for i := 0; i <= 255; i++ {
-		var opt = layers.DHCPOpt(byte(i))
-		if opt.String() == "Unknown" {
-			continue
-		}
-		optionList[opt.String()] = opt
-	}
+	flag.Var(&optionRequest, CommandOption.Name, CommandOption.usage)
+
 	flag.Parse()
 }

@@ -13,6 +13,30 @@
 			"path": "github.com/google/gopacket/bytediff",
 			"revision": "90caebb54a7ad26cde945bbb3b63652877de4c56",
 			"revisionTime": "2019-01-14T16:17:55Z"
+		},
+		{
+			"checksumSHA1": "Xp66+EHJfifVRJ8OYzGfn5otZJE=",
+			"path": "github.com/libp2p/go-reuseport",
+			"revision": "6a75ffd916e5e70a5231da13d63ee5bba1109742",
+			"revisionTime": "2019-02-18T23:36:03Z"
+		},
+		{
+			"checksumSHA1": "V5va3aYpyWGkvV1uO2l7la5kgFc=",
+			"path": "github.com/pkg/errors",
+			"revision": "ffb6e22f01932bf7ac35e0bad9be11f01d1c8685",
+			"revisionTime": "2019-01-09T06:16:28Z"
+		},
+		{
+			"checksumSHA1": "sEnY0M5iGRsoXHsjHqFVLPc+OQs=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "a9d3bda3a223baa6bba6ef412cb273f0fd163c05",
+			"revisionTime": "2019-02-21T21:11:38Z"
+		},
+		{
+			"checksumSHA1": "Hu8GoQK1euwtE4UjrhXepmk2NM8=",
+			"path": "golang.org/x/sys/windows",
+			"revision": "a9d3bda3a223baa6bba6ef412cb273f0fd163c05",
+			"revisionTime": "2019-02-21T21:11:38Z"
 		}
 	],
 	"rootPath": "dhcptest"

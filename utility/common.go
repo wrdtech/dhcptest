@@ -29,21 +29,6 @@ type Lease struct {
 
 }
 
-func IsEqualBetweenByteSliceAndArray(slice []byte, array []byte) bool {
-	if slice == nil {
-		return false
-	}
-	if len(slice) != len(array) {
-		return false
-	}
-	for i, v := range slice {
-		if v != array[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func GetInterfaceByIP(ip string, validip map[string]net.Interface) (*net.Interface, error) {
 	iface, ok := validip[ip]
 	if !ok {

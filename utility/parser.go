@@ -43,15 +43,13 @@ func (parser *Parser) Init() {
 	parser.parser[string(DHCPTimeFormat)] = parseTime
 }
 
-func (parser *Parser) Parse(str string) (layers.DHCPOptions, error) {
+func (parser *Parser) Parse(options RequestParams) (layers.DHCPOptions, error) {
 	//define variable
-	var code, value string
-	var format optionFormat
 	var dhcpOptions layers.DHCPOptions
 	buf := bytes.Buffer{}
 
 	//define parse function
-	parseOption := func() error {
+	parseOption := func(code string, value string, format optionFormat) error {
 		if len(code) == 0 {
 			return fmt.Errorf("missing option code")
 		}
@@ -65,6 +63,7 @@ func (parser *Parser) Parse(str string) (layers.DHCPOptions, error) {
 		}
 		//value
 		value = buf.String()
+		//fmt.Printf("str: %s\n", value)
 
 		//get parser
 		valueParser,ok := parser.parser[string(format)]
@@ -84,52 +83,40 @@ func (parser *Parser) Parse(str string) (layers.DHCPOptions, error) {
 		return nil
 	}
 
-	fmt.Println(str)
-
-	hasLeftBracket := false
-	hasRightBracket := false
-
 	//start parse
-	for i:=0 ; i < len(str); i++ {
-		switch str[i] {
-		case '=':
-			if hasLeftBracket != hasRightBracket {
-				return dhcpOptions, fmt.Errorf("左括号和右括号应成对出现")
-			}
-			if !hasLeftBracket {
+	for _, str := range options {
+		code, value := "", ""
+		var format optionFormat = ""
+		hasLeftBracket := false
+		hasRightBracket := false
+		//fmt.Printf("str len: %d\n", len(str))
+		for _, s := range str {
+			switch s {
+			case '=':
+				if hasLeftBracket != hasRightBracket {
+					return dhcpOptions, fmt.Errorf("左括号和右括号应成对出现")
+				}
+				if !hasLeftBracket {
+					code = buf.String()
+					buf.Reset()
+				}
+			case '[':
+				hasLeftBracket = true
 				code = buf.String()
 				buf.Reset()
+			case ']':
+				hasRightBracket = true
+				format = optionFormat(buf.String())
+				buf.Reset()
+			default:
+				//fmt.Printf("char: %c, type: %s, size: %d, index: %d\n", s, reflect.TypeOf(s), unsafe.Sizeof(s), i)
+				buf.WriteRune(s)
 			}
-			//fmt.Println(code)
-			//fmt.Println(format)
-		case ';':
-			err := parseOption()
-			if err != nil {
-				return dhcpOptions, err
-			}
-
-			hasLeftBracket = false
-			hasRightBracket = false
-			code = ""
-			value = ""
-			format = ""
-			buf.Reset()
-		case '[':
-			hasLeftBracket = true
-		    code = buf.String()
-			buf.Reset()
-		case ']':
-			hasRightBracket = true
-			format = optionFormat(buf.String())
-			buf.Reset()
-		default:
-			buf.WriteRune(rune(str[i]))
-			if i == len(str) - 1 {
-				err := parseOption()
-				if err != nil {
-					return dhcpOptions, err
-				}
-			}
+		}
+		err := parseOption(code, value, format)
+		buf.Reset()
+		if err != nil {
+			return dhcpOptions, err
 		}
 	}
 	return dhcpOptions, nil
@@ -166,8 +153,11 @@ func parseOption(value string) ([]byte, error) {
 	var data []byte
 	params := strings.Split(value, ",")
 	for _, str := range params {
-		optionCode, ok := optionList[str]
-		if !ok {
+		optionCode, err := strconv.Atoi(str)
+		if err != nil {
+			return data, fmt.Errorf("code parser error: %s", err)
+		}
+		if layers.DHCPOpt(optionCode).String() == "Unknown" {
 			return data, fmt.Errorf("%s unsupport option", str)
 		}
 		data = append(data, byte(optionCode))
