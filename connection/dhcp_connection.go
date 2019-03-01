@@ -30,9 +30,8 @@ type DhcpClient struct {
 	DHCPOptions []layers.DHCPOption
 	Timeout time.Duration
 	laddr net.UDPAddr
-	conn *TransPort
 	logger *utility.Log
-	ListenThreadPoolSize int
+	listenThreadPoolSize int
 	listenThreadPool []UDPListenThread
 	rebind bool
 	shutdown bool
@@ -86,30 +85,11 @@ func (dc *DhcpClient) Start() {
 	fmt.Printf("client: %+v\n", dc)
 	go dc.run()
 	*/
-	dc.init()
 	//dc.sign = make(chan int)
+	dc.logger = &utility.Log{Logger: utility.DHCPLogger()}
 	dc.laddr = net.UDPAddr{IP: dc.BindIP, Port: 68}
 	dc.AddOption(layers.DHCPOptHostname, []byte(dc.Hostname))
 
-}
-
-func (dc *DhcpClient) init() {
-	dc.logger = &utility.Log{Logger: utility.DHCPLogger()}
-	/*
-	dc.conn = &TransPort{
-		Dialer: UDPDialer(),
-		Listener: UDPListener(),
-	}
-	*/
-	for i := 0; i < dc.ListenThreadPoolSize; i++ {
-		lt := &ListenThread{
-			Id: rand.Uint32(),
-			Timeout: dc.Timeout,
-			Listener: UDPListener(),
-		}
-		lt.init()
-		dc.listenThreadPool = append(dc.listenThreadPool, lt)
-	}
 }
 
 func (dc *DhcpClient) Stop() {
@@ -132,161 +112,8 @@ func (dc *DhcpClient) Stop() {
 	log.Printf("[%s] shutting down dhcp client", dc.Iface.Name)
 
 }
-/*
 
-func (dc *DhcpClient) Renew() {
-	select {
-	case dc.notify <- struct{}{}:
-	default:
-	}
-}
-
-func (dc *DhcpClient) Rebind() {
-	dc.rebind = true
-	dc.Lease = nil
-	dc.Renew()
-}
-
-
-func (dc *DhcpClient) run() {
-	for !dc.shutdown {
-		dc.running = true
-	    dc.runOnce()
-	}
-	dc.wg.Done()
-}
-
-func (dc *DhcpClient) runOnce() {
-	var err error
-	if dc.Lease == nil || dc.rebind {
-		if OnlyDiscover {
-			err = dc.withConnection(dc.onlyDiscover)
-		} else {
-			err = dc.withConnection(dc.discoverAndRequest)
-		}
-		if err == nil {
-			dc.rebind = false
-		}
-	} else {
-		err = dc.withConnection(dc.renew)
-	}
-
-	if err != nil {
-		log.Printf("[%s] error: %s", dc.Iface.Name, err)
-		select {
-		case <-dc.notify:
-		case <-time.After(time.Second):
-		}
-		return
-	}
-	select {
-	case <- dc.notify:
-		return
-	case <-time.After(time.Until(dc.Lease.Expire)):
-			dc.unbound()
-			break
-    case <-time.After(time.Until(dc.Lease.Rebind)):
-     		dc.rebind = true
-     		break
-    case <-time.After(time.Until(dc.Lease.Renew)):
-    	break
-	}
-}
-
-func (dc *DhcpClient) unbound() {
-	if cb := dc.OnExpire; cb != nil {
-		cb(dc.Lease)
-	}
-	dc.Lease = nil
-}
-
-func (dc *DhcpClient) withConnection(f func() error) error {
-	conn := &TransPort{
-		Dialer: UDPDialer(),
-		Listener: UDPListener(),
-	}
-
-	dc.conn = conn
-	//dc.xids = append(dc.xids, rand.Uint32())
-
-	defer func() {
-		dc.conn = nil
-	}()
-
-
-	return f()
-
-}
-
-func (dc *DhcpClient) onlyDiscover() error {
-	_, err := dc.discover()
-	if err!= nil {
-		return err
-	}
-	return nil
-}
-
-func (dc *DhcpClient) discoverAndRequest() error {
-	lease, err := dc.discover()
-	if err != nil {
-		return err
-	}
-	return dc.request(lease)
-}
-
-func (dc *DhcpClient) renew() error {
-	return dc.request(dc.Lease)
-}
-
-func (dc *DhcpClient) request(lease *utility.Lease) error {
-	fixedAddress :=  []byte(lease.FixedAddress)
-	serverID := []byte(lease.ServerID)
-	err := dc.sendPacket(layers.DHCPMsgTypeRequest, append(dc.DHCPOptions,
-		layers.NewDHCPOption(layers.DHCPOptRequestIP, fixedAddress),
-		layers.NewDHCPOption(layers.DHCPOptServerID, serverID),
-	    ))
-	if err != nil {
-		return err
-	}
-
-	msgType, lease , err := dc.waitForResponse(layers.DHCPMsgTypeAck, layers.DHCPMsgTypeNak)
-
-	if err != nil {
-		return err
-	}
-
-	switch msgType {
-	case layers.DHCPMsgTypeAck:
-		if lease.Expire.IsZero() {
-			err = errors.New("expire value is zero")
-			break
-		}
-
-		if lease.Renew.IsZero() {
-			lease.Renew = lease.Bound.Add(lease.Expire.Sub(lease.Bound) / 2)
-		}
-
-		if lease.Rebind.IsZero() {
-			lease.Rebind = lease.Bound.Add(lease.Expire.Sub(lease.Bound) / 1000 * 875)
-		}
-		dc.Lease = lease
-
-		if cb := dc.OnBound; cb != nil {
-			cb(lease)
-		}
-		break
-	case layers.DHCPMsgTypeNak:
-		err = errors.New("received NAK")
-		break
-	default:
-		err = fmt.Errorf("unexpected response: %s", msgType.String())
-		break
-	}
-	return err
-}
-*/
-
-func (dc *DhcpClient) getIdleListenThread() UDPListenThread {
+func (dc *DhcpClient) GetIdleListenThread() UDPListenThread {
 	for _, lt := range dc.listenThreadPool {
 		if lt.Status() == Sleeping {
 			return lt
@@ -295,48 +122,63 @@ func (dc *DhcpClient) getIdleListenThread() UDPListenThread {
 	return nil
 }
 
-func (dc *DhcpClient) SendDiscover(request bool) error {
+func (dc *DhcpClient) GetAddr() *net.UDPAddr {
+	return &dc.laddr
+}
+
+func (dc *DhcpClient) InitListenThread(size int) {
+	dc.listenThreadPoolSize = size
+	for i := 0; i < dc.listenThreadPoolSize; i++ {
+		lt := &ListenThread{
+			Id: rand.Uint32(),
+			Timeout: dc.Timeout,
+			Listener: UDPListener(),
+		}
+		lt.init()
+		dc.listenThreadPool = append(dc.listenThreadPool, lt)
+	}
+}
+
+func (dc *DhcpClient) SendDiscover(mac net.HardwareAddr ,  xid uint32, c chan *layers.DHCPv4, request bool) error {
+	/*
 	// start listen thread
 	lt := dc.getIdleListenThread()
 	if lt == nil {
 		return fmt.Errorf("no idle listen thread now\n")
 	}
-	xid := rand.Uint32()
-	c := make(chan interface{}, 10)
 	lt.SetXid(xid)
 	err := lt.Start(&dc.laddr, c, layers.DHCPMsgTypeOffer)
 	if err != nil {
 		return err
 	}
+	*/
 
 	//generate packet
 	var clientMac net.HardwareAddr
 	if dc.ClientMac == nil {
-		var err error
-		clientMac, err = net.ParseMAC(utility.RandomMac())
-		if err != nil {
-			return err
-		}
+		clientMac = mac
 	} else {
 		clientMac = dc.ClientMac
 	}
 	packet := dc.newPacket(layers.DHCPMsgTypeDiscover, xid, clientMac, dc.DHCPOptions)
-	log.Printf("%s,sending %s:\n", dc.Iface.Name, layers.DHCPMsgTypeDiscover)
-	dc.logger.PrintLog(packet)
+	//log.Printf("%s,sending %s:\n", dc.Iface.Name, layers.DHCPMsgTypeDiscover)
+	//dc.logger.PrintLog(packet)
 
 	//start send
 	go func () {
-		defer lt.Stop()
-		err = dc.sendMulticast(packet)
+		err := dc.sendMulticast(packet)
 		if err != nil {
 			log.Println(err)
 			return
 		}
+		utility.DHCPCounter[clientMac.String()].AddRequest(1)
 
 		for resPacket := range c {
-			msgType, lease := utility.NewLease(resPacket.(*layers.DHCPv4))
-			log.Printf("[%s] received %s\n", dc.Iface.Name, msgType)
-			dc.logger.PrintLog(resPacket)
+			_, lease := utility.NewLease(resPacket)
+			utility.DHCPCounter[clientMac.String()].AddResponse(1)
+			//msgType, lease := utility.NewLease(resPacket)
+			//log.Printf("[%s] received %s\n", dc.Iface.Name, msgType)
+			//dc.logger.PrintLog(resPacket)
 			if request {
 				err = dc.sendRequest(&lease, xid, clientMac)
 				if err != nil {
@@ -345,7 +187,7 @@ func (dc *DhcpClient) SendDiscover(request bool) error {
 			}
 		}
 
-		log.Println("discover over")
+		//log.Println("discover over")
 
 	}()
 
@@ -354,7 +196,7 @@ func (dc *DhcpClient) SendDiscover(request bool) error {
 
 func (dc *DhcpClient) sendRequest(lease *utility.Lease, xid uint32, clientMac net.HardwareAddr) error {
 	// start listen thread
-	lt := dc.getIdleListenThread()
+	lt := dc.GetIdleListenThread()
 	if lt == nil {
 		return fmt.Errorf("no idle listen thread now\n")
 	}
@@ -396,80 +238,6 @@ func (dc *DhcpClient) sendRequest(lease *utility.Lease, xid uint32, clientMac ne
 	return nil
 
 }
-
-
-
-/*
-func (dc *DhcpClient) discover() (*utility.Lease, error) {
-	err := dc.sendPacket(layers.DHCPMsgTypeDiscover, dc.DHCPOptions)
-
-	if err != nil {
-		return nil, err
-	}
-
-	_, lease, err := dc.waitForResponse(layers.DHCPMsgTypeOffer)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return lease, nil
-}
-
-func (dc *DhcpClient) waitForResponse(msgTypes ...layers.DHCPMsgType) (layers.DHCPMsgType, *utility.Lease, error) {
-	con, err := dc.conn.Listen(&dc.laddr)
-
-	if err != nil {
-		return layers.DHCPMsgTypeUnspecified, nil, err
-	}
-	defer con.Close()
-
-	err = con.SetReadDeadline(time.Now().Add(responseTimeout))
-
-	if err != nil {
-		return layers.DHCPMsgTypeUnspecified, nil, err
-	}
-
-	recvBuf := make([]byte, 342)
-
-	for {
-
-		_, _, err := con.ReadFrom(recvBuf)
-
-		if err != nil {
-			return layers.DHCPMsgTypeUnspecified, nil, err
-		}
-
-		packet := utility.ParsePacket(recvBuf)
-
-		if packet == nil {
-			continue
-		}
-		/*
-
-		if packet.Xid == dc.xid && packet.Operation == layers.DHCPOpReply {
-			msgType, res := utility.NewLease(packet)
-
-			for _,t := range msgTypes {
-				if t == msgType {
-					log.Printf("[%s] received %s", dc.Iface.Name, msgType)
-					dc.logger.PrintLog(packet)
-					return msgType, &res, nil
-				}
-			}
-		}
-	}
-}
-
-
-/*
-func (dc *DhcpClient) sendPacket(msgType layers.DHCPMsgType, options []layers.DHCPOption) error {
-	packet := dc.newPacket(msgType, options)
-	log.Printf("%s,sending %s:\n", dc.Iface.Name, msgType)
-	dc.logger.PrintLog(packet)
-	return dc.sendMulticast(packet)
-}
-*/
 
 func (dc *DhcpClient) sendMulticast(dhcp *layers.DHCPv4) error {
 

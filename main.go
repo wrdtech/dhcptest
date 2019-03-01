@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"dhcptest/connection"
+	"dhcptest/layers"
 	"dhcptest/utility"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -89,8 +91,7 @@ func main() {
 			log.Printf("Bound: %+v", lease)
 		},
 		DHCPOptions: dhcpOptions,
-		ListenThreadPoolSize: 20,
-		Timeout: time.Second * 10,
+		Timeout: timeout,
 	}
 
 	dc.Start()
@@ -116,10 +117,10 @@ func main() {
 			fmt.Println("Commands:")
 			fmt.Printf("\t d / discover\n" +
 				"\t\t Broadcasts a DHCP discover packet.\n" +
-				"\t\t You can optionally specify a part or an entire MAC address\n" +
-				"\t\t to use for the client hardware address field (chaddr), e.g.\n" +
-				"\t\t \"d 02:00:00\" will use the specified first 3 octets and\n" +
-				"\t\t randomly generate the rest.\n")
+				"\t\t You can optionally specify the device num and request rate\n" +
+				"\t\t to use for the stress testing, e.g.\n" +
+				"\t\t \"d 5 100\" will pretend 5 terminals and request\n" +
+				"\t\t 100 times per minute.\n")
 			fmt.Printf("\t r / request\n" +
 				"\t\t Broadcast a DHCP discover.Then broadcast a DHCP request packet when you gen an offer packet.\n" +
 				"\t\t You can also specify parameters as d command does.\n")
@@ -127,59 +128,129 @@ func main() {
 				"\t\t Print this message.\n")
 			fmt.Printf("\t q / quit\n" +
 				"\t\t Quits the program\n")
-		case "d", "discover":
-			num := 1
-			if len(params) == 2 {
-				num, err = strconv.Atoi(params[1])
+		case "d", "discover", "r", "request":
+			utility.DHCPCounter = make(map[string]*utility.Counter)
+			//init deviceNum
+			deviceNum := 1
+			if len(params) >= 2 {
+				var err error
+				deviceNum, err = strconv.Atoi(params[1])
 				if err != nil {
 					log.Println(err)
 					continue
 				}
 			}
-			for i := 0; i< num; i++ {
-				err := dc.SendDiscover(false)
+			fmt.Printf("the %d device mac is: ", deviceNum)
+			var macList []net.HardwareAddr
+			for i:=0; i< deviceNum; i++ {
+				mac, err := net.ParseMAC(utility.RandomMac())
+				time.Sleep(time.Millisecond) //only ensure time seed different
 				if err != nil {
 					log.Println(err)
+					continue
 				}
+				macList = append(macList, mac)
+				counter := new(utility.Counter)
+				counter.Init()
+				utility.DHCPCounter[mac.String()] = counter
+				fmt.Printf("%s ", mac)
 			}
-		case "r", "request":
-			err := dc.SendDiscover(true)
-			if err != nil {
-				log.Println(err)
-			}
-		case "l":
-			/*
-			if params == "start" {
-				for _, lt := range listenThreads {
-					c := make(chan interface{}, 10)
-					err := lt.Start(&net.UDPAddr{IP:net.ParseIP("10.123.11.124"), Port:68}, c)
+			fmt.Println()
+
+
+			//send func
+			send := func() {
+				var xids []uint32
+				xidChan := make(map[uint32]chan *layers.DHCPv4)
+				for i:=0 ;i <deviceNum; i++ {
+					xid := rand.Uint32()
+					xids = append(xids, xid)
+					xidChan[xid] = make(chan *layers.DHCPv4)
+				}
+				lt := dc.GetIdleListenThread()
+				if lt == nil {
+					log.Println("no idle listen thread now")
+					return
+				}
+				lt.SetXid(xidChan)
+				err := lt.Start(dc.GetAddr(),layers.DHCPMsgTypeOffer)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				for i := 0; i< deviceNum; i++ {
+					xid := xids[i]
+					if command == "r" || command == "request" {
+						err = dc.SendDiscover(macList[i], xid, xidChan[xid], true)
+					} else if command == "d" || command == "discover" {
+						err = dc.SendDiscover(macList[i], xid, xidChan[xid], false)
+					}
 					if err != nil {
-						fmt.Println(err)
+						log.Println(err)
 					}
 				}
 			}
 
-			if params == "stop" {
-				err := listenThreads[num].Stop()
+			//init rate
+			if len(params) == 3 {
+				rate, err := strconv.Atoi(params[2])
 				if err != nil {
-					fmt.Println(err)
+					log.Println(err)
+					continue
 				}
-			}
+				ratePerDecivce := 60 * 1000 * 1000 * 1000 / (rate / deviceNum)
+				interval := time.Nanosecond * time.Duration(ratePerDecivce)
+				listenThreadSize := int((timeout / interval) * 2)
+				if listenThreadSize <= 0 {
+					listenThreadSize = 1
+				}
+				log.Printf("device num: %d, rate: %d, interval: %s, listen thread size: %d", deviceNum, rate, interval, listenThreadSize)
+				ticker := time.NewTicker(interval)
+				dc.InitListenThread(listenThreadSize)
+				go func() {
+					send()
+					for range ticker.C {
+						send()
+					}
+				}()
+				go func() {
+					ticker := time.NewTicker(time.Second)
+					for {
+						select {
+						case <-ticker.C:
+							for _, mac := range macList {
+								if counter, ok := utility.DHCPCounter[mac.String()]; ok {
+									log.Printf("mac:%s, request: %d, response: %d, percentage: %s",
+										mac,
+										counter.GetRequest(),
+										counter.GetResponse(),
+										counter.GetPercentage())
+								}
+							}
+						}
 
-			if params == "pause" {
-				err := listenThreads[num].Pause()
-				if err != nil {
-					fmt.Println(err)
-				}
+					}
+				}()
+			} else {
+				dc.InitListenThread(1)
+				send()
+				go func() {
+					ticker := time.NewTimer(timeout)
+					select {
+					case <-ticker.C:
+						for _, mac := range macList {
+							if counter, ok := utility.DHCPCounter[mac.String()]; ok {
+								log.Printf("mac:%s, request: %d, response: %d, percentage: %s",
+									mac,
+									counter.GetRequest(),
+									counter.GetResponse(),
+									counter.GetPercentage())
+							}
+						}
+					}
+				}()
 			}
-
-			if params == "resume" {
-				err := listenThreads[num].Resume()
-				if err != nil {
-					fmt.Println(err)
-				}
-			}
-			*/
+		case "s":
 		default:
 			fmt.Println("Enter a supported command, Type \"help\" for details")
 		}
