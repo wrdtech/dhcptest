@@ -12,10 +12,6 @@ import (
 	"github.com/google/gopacket"
 )
 
-const responseTimeout = time.Second * 5
-
-var OnlyDiscover = false
-
 type Callback func(*utility.Lease)
 
 //DhcpClient
@@ -31,7 +27,6 @@ type DhcpClient struct {
 	Timeout time.Duration
 	laddr net.UDPAddr
 	logger *utility.Log
-	listenThreadPoolSize int
 	listenThreadPool []UDPListenThread
 	rebind bool
 	shutdown bool
@@ -109,6 +104,7 @@ func (dc *DhcpClient) Stop() {
 	dc.sign <- 1
 	dc.wg.Wait()
 	*/
+	dc.wg.Wait()
 	log.Printf("[%s] shutting down dhcp client", dc.Iface.Name)
 
 }
@@ -127,8 +123,8 @@ func (dc *DhcpClient) GetAddr() *net.UDPAddr {
 }
 
 func (dc *DhcpClient) InitListenThread(size int) {
-	dc.listenThreadPoolSize = size
-	for i := 0; i < dc.listenThreadPoolSize; i++ {
+	dc.listenThreadPool = nil
+	for i := 0; i < size; i++ {
 		lt := &ListenThread{
 			Id: rand.Uint32(),
 			Timeout: dc.Timeout,
@@ -137,6 +133,18 @@ func (dc *DhcpClient) InitListenThread(size int) {
 		lt.init()
 		dc.listenThreadPool = append(dc.listenThreadPool, lt)
 	}
+}
+
+func (dc *DhcpClient) StopListenThread() error {
+	for _, lt := range dc.listenThreadPool{
+		if lt.Status() != Sleeping {
+			err := lt.Stop()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (dc *DhcpClient) SendDiscover(mac net.HardwareAddr ,  xid uint32, c chan *layers.DHCPv4, request bool) error {
@@ -166,6 +174,8 @@ func (dc *DhcpClient) SendDiscover(mac net.HardwareAddr ,  xid uint32, c chan *l
 
 	//start send
 	go func () {
+		dc.wg.Add(1)
+		defer dc.wg.Done()
 		err := dc.sendMulticast(packet)
 		if err != nil {
 			log.Println(err)

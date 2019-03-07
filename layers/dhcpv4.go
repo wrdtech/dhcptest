@@ -142,6 +142,18 @@ func (o DHCPOptions) String() string {
 // LayerType returns gopacket.LayerTypeDHCPv4
 func (d *DHCPv4) LayerType() gopacket.LayerType { return LayerTypeDHCPv4 }
 
+func (d *DHCPv4) MessageType() DHCPMsgType {
+	for _,option := range d.Options {
+		switch option.Type {
+		case DHCPOptMessageType:
+			if option.Length == 1 {
+				return DHCPMsgType(option.Data[0])
+			}
+		}
+	}
+	return DHCPMsgTypeUnspecified
+}
+
 // DecodeFromBytes decodes the given bytes into this layer.
 func (d *DHCPv4) DecodeFromBytes(data []byte, df gopacket.DecodeFeedback) error {
 	d.Options = d.Options[:0]

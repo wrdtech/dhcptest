@@ -30,15 +30,19 @@ var (
 	try          int
 	requestIP    string
 	onlyDiscover bool
+	intervalC    chan int
+	loggerC      chan int
 )
 
 func init() {
+	getOpts()
+	intervalC = make(chan int)
+	loggerC   = make(chan int)
 	fmt.Println("dhcptest v0.1 -Created by WRD, based on gopacket")
 	fmt.Println("Run with --help for a list of command-line options")
 }
 
 func main() {
-	getOpts()
 
 	//bind ip
 	iface, err :=utility.GetInterfaceByIP(bindIP, utility.ValidIP)
@@ -49,21 +53,6 @@ func main() {
 
 	//bind mac
 	clientMac, _ := net.ParseMAC(bindMac)
-
-	/*
-	//requestIP
-	requestIPByte := net.ParseIP(requestIP)
-	if requestIPByte == nil {
-		fmt.Println("wrong ip format")
-		return
-	}
-	requestIPByte = requestIPByte.To4()
-	if requestIPByte == nil {
-		fmt.Println("only support ipv4 for now")
-		return
-	}
-	*/
-//	fmt.Printf("raw option: %s\n", option)
 
 	//option
 	parser := &utility.Parser{}
@@ -80,8 +69,6 @@ func main() {
 
 	hostname, _ := os.Hostname()
 
-	connection.OnlyDiscover  = onlyDiscover
-
 	dc := connection.DhcpClient{
 		BindIP:    net.ParseIP(bindIP),
 		Hostname:  hostname,
@@ -93,9 +80,9 @@ func main() {
 		DHCPOptions: dhcpOptions,
 		Timeout: timeout,
 	}
-
 	dc.Start()
 	defer dc.Stop()
+
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Println("Type \"d\" to broadcast a DHCP discover packet, or \"help\" for details")
 	for {
@@ -162,7 +149,7 @@ func main() {
 			send := func() {
 				var xids []uint32
 				xidChan := make(map[uint32]chan *layers.DHCPv4)
-				for i:=0 ;i <deviceNum; i++ {
+				for i := 0; i < deviceNum; i++ {
 					xid := rand.Uint32()
 					xids = append(xids, xid)
 					xidChan[xid] = make(chan *layers.DHCPv4)
@@ -173,12 +160,12 @@ func main() {
 					return
 				}
 				lt.SetXid(xidChan)
-				err := lt.Start(dc.GetAddr(),layers.DHCPMsgTypeOffer)
+				err := lt.Start(dc.GetAddr(), layers.DHCPMsgTypeOffer)
 				if err != nil {
 					log.Println(err)
 					return
 				}
-				for i := 0; i< deviceNum; i++ {
+				for i := 0; i < deviceNum; i++ {
 					xid := xids[i]
 					if command == "r" || command == "request" {
 						err = dc.SendDiscover(macList[i], xid, xidChan[xid], true)
@@ -209,26 +196,44 @@ func main() {
 				dc.InitListenThread(listenThreadSize)
 				go func() {
 					send()
-					for range ticker.C {
-						send()
-					}
-				}()
-				go func() {
-					ticker := time.NewTicker(time.Second)
 					for {
 						select {
 						case <-ticker.C:
+							send()
+						case <-intervalC:
+							log.Println("ticker stop")
+							return
+						}
+					}
+				}()
+				go func() {
+					ticker := time.NewTicker(time.Second * 5)
+					current_time := time.Now()
+					for {
+						select {
+						case <-ticker.C:
+							request, response := 0, 0
 							for _, mac := range macList {
 								if counter, ok := utility.DHCPCounter[mac.String()]; ok {
+									request = request + counter.GetRequest()
+									response = response + counter.GetResponse()
+									/*
 									log.Printf("mac:%s, request: %d, response: %d, percentage: %s",
 										mac,
 										counter.GetRequest(),
 										counter.GetResponse(),
 										counter.GetPercentage())
+									*/
 								}
 							}
+							now_time := time.Now()
+							during := now_time.Sub(current_time).Seconds()
+							log.Printf("request: %d, response: %d, qSpeed: %.2f, pSpeed: %.2f", request, response, float64(request) / during,
+								float64(response)/during)
+						case <-loggerC:
+							log.Println("logger stop")
+							return
 						}
-
 					}
 				}()
 			} else {
@@ -247,10 +252,20 @@ func main() {
 									counter.GetPercentage())
 							}
 						}
+				    case <-loggerC:
+						log.Println("logger stop")
+						return
 					}
 				}()
 			}
 		case "s":
+			intervalC <- 1
+			loggerC <- 1
+			err := dc.StopListenThread()
+		    if err != nil {
+		    	log.Println(err)
+			}
+			dc.Stop()
 		default:
 			fmt.Println("Enter a supported command, Type \"help\" for details")
 		}
