@@ -1,8 +1,11 @@
 package connection
 
 import (
+	"dhcptest/layers"
 	"fmt"
 	"github.com/libp2p/go-reuseport"
+	"github.com/pinterest/bender"
+	"math/rand"
 	"net"
 )
 
@@ -44,3 +47,29 @@ func UDPListener() Listener {
 	}
 }
 
+
+// CreateExecutor creates a new DHCPv4 RequestExecutor.
+func CreateExecutor(client *DhcpClient) bender.RequestExecutor {
+	send := newSendFunc(client)
+	return func(_ int64, request interface{}) (interface{}, error) {
+		packet, ok := request.(*layers.DHCPv4)
+		if !ok {
+			return nil, fmt.Errorf("invalid request type %T, want: *layers.DHCPv4", request)
+		}
+		packetResonse := send(packet)
+		return  packetResonse, nil
+	}
+}
+
+// sendFunc represents a function used to send dhcpv4 datagrams
+type sendFunc = func(*layers.DHCPv4) *PacketResponse
+
+// newSendFunc creates a function which will send messages using the given client
+func newSendFunc(client *DhcpClient) sendFunc {
+
+	// send a message and check that the response is of a given type
+	return func(d *layers.DHCPv4) *PacketResponse{
+		//log.Printf("sendqueue %s\n", d)
+		 return client.Send(d, WithTransactionID(rand.Uint32()))
+	}
+}

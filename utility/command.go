@@ -5,7 +5,26 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"time"
+)
+
+var (
+	Help         bool
+	BindIP       string
+	BindMac      string
+	Secs         time.Duration
+	Quiet        bool
+	Query        bool
+	Wait         bool
+	Option       RequestParams
+	Request      string
+	PrintOnly    string
+	Timeout      time.Duration
+	Try          int
+	RequestIP    string
+	OnlyDiscover bool
+	DhcpOptions  layers.DHCPOptions
 )
 
 type CommandFlag struct {
@@ -124,4 +143,61 @@ func init() {
 	flag.Var(&optionRequest, CommandOption.Name, CommandOption.usage)
 
 	flag.Parse()
+
+	getOpts()
+}
+
+func getOpts() {
+	for _, command := range CommandList {
+		switch command.CommandFlag {
+		case &CommandHelp, &CommandOptionHelp, &CommandIPList:
+			Help = *(command.Value.(*bool))
+			if Help {
+				command.Print()
+				os.Exit(0)
+			}
+			break
+		case &CommandBindIP:
+			BindIP = *command.Value.(*string)
+			break
+		case &CommandMac:
+			BindMac = *command.Value.(*string)
+			break
+		case &CommandSecs:
+			Secs = *command.Value.(*time.Duration)
+			break
+		case &CommandQuiet:
+			Quiet = *command.Value.(*bool)
+			break
+		case &CommandQuery:
+			Query = *command.Value.(*bool)
+			break
+		case &CommandWait:
+			Wait = *command.Value.(*bool)
+			break
+		case &CommandOption:
+			Option = *command.Value.(*RequestParams)
+			break
+		case &CommandRequest:
+			Request = *command.Value.(*string)
+			break
+		case &CommandPrint:
+			PrintOnly = *command.Value.(*string)
+			break
+		case &CommandTimeOut:
+			Timeout = *command.Value.(*time.Duration)
+			break
+		case &CommandTry:
+			Try = *command.Value.(*int)
+			break
+		case &CommandRequestIP:
+			RequestIP = *command.Value.(*string)
+			break
+		case &CommandOnlyDisover:
+			OnlyDiscover = *command.Value.(*bool)
+			break
+		default:
+			break
+		}
+	}
 }

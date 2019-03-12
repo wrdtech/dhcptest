@@ -142,18 +142,6 @@ func (o DHCPOptions) String() string {
 // LayerType returns gopacket.LayerTypeDHCPv4
 func (d *DHCPv4) LayerType() gopacket.LayerType { return LayerTypeDHCPv4 }
 
-func (d *DHCPv4) MessageType() DHCPMsgType {
-	for _,option := range d.Options {
-		switch option.Type {
-		case DHCPOptMessageType:
-			if option.Length == 1 {
-				return DHCPMsgType(option.Data[0])
-			}
-		}
-	}
-	return DHCPMsgTypeUnspecified
-}
-
 // DecodeFromBytes decodes the given bytes into this layer.
 func (d *DHCPv4) DecodeFromBytes(data []byte, df gopacket.DecodeFeedback) error {
 	d.Options = d.Options[:0]
@@ -279,6 +267,46 @@ func (d *DHCPv4) CanDecode() gopacket.LayerClass {
 func (d *DHCPv4) NextLayerType() gopacket.LayerType {
 	return gopacket.LayerTypePayload
 }
+
+// edited by wsx
+
+func (d *DHCPv4) MessageType() DHCPMsgType {
+	for _,option := range d.Options {
+		switch option.Type {
+		case DHCPOptMessageType:
+			if option.Length == 1 {
+				return DHCPMsgType(option.Data[0])
+			}
+		}
+	}
+	return DHCPMsgTypeUnspecified
+}
+
+func (d *DHCPv4) AddOption(optType DHCPOpt, data []byte) {
+	d.Options = append(d.Options, NewDHCPOption(optType, data))
+}
+
+func (d *DHCPv4) AddParamRequest(dhcpOpts ...DHCPOpt) {
+	for _, dhcpOpt := range dhcpOpts {
+		for i := range d.Options {
+			if d.Options[i].Type == DHCPOptParamsRequest {
+				d.Options[i].AddByte(byte(dhcpOpt))
+				return
+			}
+		}
+		d.AddOption(DHCPOptParamsRequest, []byte{byte(dhcpOpt)})
+
+	}
+}
+
+func (d *DHCPv4) SetBroadcast() {
+	d.Flags = uint16(BroadcastFlag)
+}
+
+func (d *DHCPv4) SetUnicast() {
+	d.Flags = uint16(UnicastFlag)
+}
+//edited by wsx end
 
 func decodeDHCPv4(data []byte, p gopacket.PacketBuilder) error {
 	dhcp := &DHCPv4{}
@@ -836,11 +864,6 @@ func (o *DHCPOption) decode(data []byte) error {
 }
 
 func (o *DHCPOption) AddByte(b byte) {
-	for _,item := range o.Data {
-		if item == b {
-			return
-		}
-	}
 	o.Data = append(o.Data, b)
 	o.Length++
 }

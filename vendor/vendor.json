@@ -21,6 +21,18 @@
 			"revisionTime": "2019-02-18T23:36:03Z"
 		},
 		{
+			"checksumSHA1": "HmTt2Qgzwx0VU7NVRHQ6l6W7s0s=",
+			"path": "github.com/pinterest/bender",
+			"revision": "3fd6665c43e7630141cc993bf1a421d4ad937b99",
+			"revisionTime": "2019-01-25T23:06:27Z"
+		},
+		{
+			"checksumSHA1": "jWV8fZRvUjnOMKT8qHGvfgH4V7k=",
+			"path": "github.com/pinterest/bender/hist",
+			"revision": "3fd6665c43e7630141cc993bf1a421d4ad937b99",
+			"revisionTime": "2019-01-25T23:06:27Z"
+		},
+		{
 			"checksumSHA1": "V5va3aYpyWGkvV1uO2l7la5kgFc=",
 			"path": "github.com/pkg/errors",
 			"revision": "ffb6e22f01932bf7ac35e0bad9be11f01d1c8685",

@@ -1,33 +1,11 @@
 package utility
 
 import (
-	"dhcptest/layers"
-	"encoding/binary"
 	"fmt"
-	"github.com/google/gopacket"
 	"math/rand"
 	"net"
 	"time"
 )
-
-type Lease struct {
-	ServerID net.IP
-	FixedAddress net.IP
-	Netmask net.IPMask
-	NextServer net.IP
-	Broadcast net.IP
-	Router []net.IP
-	DNS []net.IP
-	TimeServer []net.IP
-	DomainName string
-	MTU uint16
-
-	Bound time.Time
-	Renew time.Time
-	Rebind time.Time
-	Expire time.Time
-
-}
 
 func GetInterfaceByIP(ip string, validip map[string]net.Interface) (*net.Interface, error) {
 	iface, ok := validip[ip]
@@ -53,7 +31,7 @@ func RandomMac() string {
 
 }
 
-func parseIPs(data []byte) []net.IP {
+func ParseIPs(data []byte) []net.IP {
 	result := make([]net.IP, len(data)/4)
 	for i:=0; i+3 < len(data); i +=4 {
 		result[i/4] = net.IP(data[i : i+4])
@@ -61,76 +39,6 @@ func parseIPs(data []byte) []net.IP {
 	return result
 }
 
-func ParsePacket(data []byte) *layers.DHCPv4 {
-	packet := gopacket.NewPacket(data, layers.LayerTypeDHCPv4, gopacket.Default)
-
-	dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
-
-	if dhcpLayer == nil {
-		return nil
-	}
-
-	return dhcpLayer.(*layers.DHCPv4)
-}
-
-func NewLease(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
-	lease.Bound = time.Now()
-	lease.FixedAddress = packet.YourClientIP
-
-	for _,option := range packet.Options {
-		switch option.Type {
-		case layers.DHCPOptMessageType:
-			if option.Length == 1 {
-				msgType  = layers.DHCPMsgType(option.Data[0])
-			}
-			break
-		case layers.DHCPOptSubnetMask:
-			lease.Netmask = net.IPMask(option.Data)
-			break
-		case layers.DHCPOptBroadcastAddr:
-			lease.Broadcast = net.IP(option.Data)
-			break
-		case layers.DHCPOptServerID:
-			lease.ServerID = net.IP(option.Data)
-			break
-		case layers.DHCPOptRouter:
-			lease.Router = parseIPs(option.Data)
-			break
-		case layers.DHCPOptDNS:
-			lease.DNS = parseIPs(option.Data)
-			break
-		case layers.DHCPOptTimeServer:
-			lease.TimeServer = parseIPs(option.Data)
-			break
-		case layers.DHCPOptDomainName:
-			lease.DomainName = string(option.Data)
-			break
-		case layers.DHCPOptInterfaceMTU:
-			if option.Length == 2 {
-				lease.MTU = binary.BigEndian.Uint16(option.Data)
-			}
-			break
-		case layers.DHCPOptLeaseTime:
-			if option.Length == 4 {
-				lease.Expire = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
-			}
-			break
-		case layers.DHCPOptT1:
-			if option.Length == 4 {
-				lease.Renew = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
-			}
-			break
-		case layers.DHCPOptT2:
-			if option.Length == 4 {
-				lease.Rebind = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
-			}
-			break
-		default:
-			break
-		}
-	}
-	return
-}
 
 func getFileString(data []byte) string {
 	if len(data) == 0 {

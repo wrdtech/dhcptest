@@ -6,8 +6,8 @@ import (
 	"dhcptest/layers"
 	"dhcptest/utility"
 	"fmt"
+	"github.com/pinterest/bender"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -15,29 +15,7 @@ import (
 	"time"
 )
 
-var (
-	help         bool
-	bindIP       string
-	bindMac      string
-	secs         time.Duration
-	quiet        bool
-	query        bool
-	wait         bool
-	option       utility.RequestParams
-	request      string
-	printOnly    string
-	timeout      time.Duration
-	try          int
-	requestIP    string
-	onlyDiscover bool
-	intervalC    chan int
-	loggerC      chan int
-)
-
 func init() {
-	getOpts()
-	intervalC = make(chan int)
-	loggerC   = make(chan int)
 	fmt.Println("dhcptest v0.1 -Created by WRD, based on gopacket")
 	fmt.Println("Run with --help for a list of command-line options")
 }
@@ -45,44 +23,53 @@ func init() {
 func main() {
 
 	//bind ip
-	iface, err :=utility.GetInterfaceByIP(bindIP, utility.ValidIP)
+	iface, err :=utility.GetInterfaceByIP(utility.BindIP, utility.ValidIP)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
+	/*
 	//bind mac
-	clientMac, _ := net.ParseMAC(bindMac)
+	clientMac, err := net.ParseMAC(utility.BindMac)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	*/
 
 	//option
 	parser := &utility.Parser{}
 	parser.Init()
-	dhcpOptions,err := parser.Parse(option)
+	utility.DhcpOptions, err =  parser.Parse(utility.Option)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 
 	//dhcpOptions = append(dhcpOptions, layers.NewDHCPOption(layers.DHCPOptRequestIP, requestIPByte), layers.NewDHCPOption(layers.DHCPOptClientID, clientID))
 	//dhcpOptions = append(dhcpOptions, layers.NewDHCPOption(layers.DHCPOptClientID, clientID))
 
-	fmt.Printf("dhcpOptions: %+v\n", dhcpOptions)
-
-	hostname, _ := os.Hostname()
+	fmt.Printf("dhcpOptions: %+v\n", utility.DhcpOptions)
+	/*
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	*/
 
 	dc := connection.DhcpClient{
-		BindIP:    net.ParseIP(bindIP),
-		Hostname:  hostname,
-		ClientMac: clientMac,
+		BindIP:    net.ParseIP(utility.BindIP),
+		//ClientMac: clientMac,
 		Iface:     iface,
-		OnBound: func(lease *utility.Lease) {
-			log.Printf("Bound: %+v", lease)
-		},
-		DHCPOptions: dhcpOptions,
-		Timeout: timeout,
+		Raddr:     net.UDPAddr{IP:net.IPv4bcast, Port: 67},
 	}
-	dc.Start()
-	defer dc.Stop()
+	dc.Open()
+	defer dc.Close()
 
+	intervalC := make(chan int)
+	loggerC := make(chan int)
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Println("Type \"d\" to broadcast a DHCP discover packet, or \"help\" for details")
 	for {
@@ -145,39 +132,6 @@ func main() {
 			fmt.Println()
 
 
-			//send func
-			send := func() {
-				var xids []uint32
-				xidChan := make(map[uint32]chan *layers.DHCPv4)
-				for i := 0; i < deviceNum; i++ {
-					xid := rand.Uint32()
-					xids = append(xids, xid)
-					xidChan[xid] = make(chan *layers.DHCPv4)
-				}
-				lt := dc.GetIdleListenThread()
-				if lt == nil {
-					log.Println("no idle listen thread now")
-					return
-				}
-				lt.SetXid(xidChan)
-				err := lt.Start(dc.GetAddr(), layers.DHCPMsgTypeOffer)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				for i := 0; i < deviceNum; i++ {
-					xid := xids[i]
-					if command == "r" || command == "request" {
-						err = dc.SendDiscover(macList[i], xid, xidChan[xid], true)
-					} else if command == "d" || command == "discover" {
-						err = dc.SendDiscover(macList[i], xid, xidChan[xid], false)
-					}
-					if err != nil {
-						log.Println(err)
-					}
-				}
-			}
-
 			//init rate
 			if len(params) == 3 {
 				rate, err := strconv.Atoi(params[2])
@@ -185,26 +139,44 @@ func main() {
 					log.Println(err)
 					continue
 				}
-				ratePerDecivce := 60 * 1000 * 1000 * 1000 / (rate / deviceNum)
-				interval := time.Nanosecond * time.Duration(ratePerDecivce)
-				listenThreadSize := int((timeout / interval) * 2)
-				if listenThreadSize <= 0 {
-					listenThreadSize = 1
-				}
-				log.Printf("device num: %d, rate: %d, interval: %s, listen thread size: %d", deviceNum, rate, interval, listenThreadSize)
-				ticker := time.NewTicker(interval)
-				dc.InitListenThread(listenThreadSize)
+				//send func
 				go func() {
-					send()
-					for {
-						select {
-						case <-ticker.C:
-							send()
-						case <-intervalC:
-							log.Println("ticker stop")
-							return
+					dc.Start(rate * 10, false)
+					defer dc.Stop()
+					requests := make(chan interface{}, rate * 10)
+					ticker := time.NewTicker(time.Microsecond * time.Duration(1000 * 1000 / rate))
+					fmt.Printf("rate: %d qps, interval: %s\n", rate,time.Microsecond * time.Duration(1000 * 1000 / rate))
+					go func() {
+						defer close(requests)
+						index := 0
+						for {
+							select {
+							case <-ticker.C:
+								mac := macList[index]
+								packet := connection.NewPacket(utility.DhcpOptions...)
+								connection.WithHWType(layers.LinkTypeEthernet)(packet)
+								connection.WithHwAddr(mac)(packet)
+								connection.WithMessageType(layers.DHCPMsgTypeDiscover)(packet)
+								//log.Printf("generate request %s\n", packet)
+								requests <- packet
+								if index = index +1 ; index == deviceNum {
+									index = 0
+							    }
+							case <-intervalC:
+								log.Println("ticker stop")
+								return
+							}
 						}
-					}
+					}()
+					intervals := bender.UniformIntervalGenerator(float64(rate))
+					exec := connection.CreateExecutor(&dc)
+					recorder := make(chan interface{}, rate * 10)
+					bender.LoadTestThroughput(intervals, requests, exec, recorder)
+					//l := log.New(os.Stdout, "", log.LstdFlags)
+					//h := hist.NewHistogram(60000, int(time.Microsecond))
+					//bender.Record(recorder, bender.NewLoggingRecorder(l), bender.NewHistogramRecorder(h))
+					bender.Record(recorder)
+					//fmt.Println(h)
 				}()
 				go func() {
 					ticker := time.NewTicker(time.Second * 5)
@@ -217,13 +189,6 @@ func main() {
 								if counter, ok := utility.DHCPCounter[mac.String()]; ok {
 									request = request + counter.GetRequest()
 									response = response + counter.GetResponse()
-									/*
-									log.Printf("mac:%s, request: %d, response: %d, percentage: %s",
-										mac,
-										counter.GetRequest(),
-										counter.GetResponse(),
-										counter.GetPercentage())
-									*/
 								}
 							}
 							now_time := time.Now()
@@ -237,6 +202,7 @@ func main() {
 					}
 				}()
 			} else {
+				/*
 				dc.InitListenThread(1)
 				send()
 				go func() {
@@ -257,72 +223,14 @@ func main() {
 						return
 					}
 				}()
+				*/
 			}
 		case "s":
 			intervalC <- 1
 			loggerC <- 1
-			err := dc.StopListenThread()
-		    if err != nil {
-		    	log.Println(err)
-			}
-			dc.Stop()
 		default:
 			fmt.Println("Enter a supported command, Type \"help\" for details")
 		}
 	}
 }
 
-func getOpts() {
-	for _, command := range utility.CommandList {
-		switch command.CommandFlag {
-		case &utility.CommandHelp, &utility.CommandOptionHelp, &utility.CommandIPList:
-			help = *(command.Value.(*bool))
-			if help {
-				command.Print()
-				os.Exit(0)
-			}
-			break
-		case &utility.CommandBindIP:
-			bindIP = *command.Value.(*string)
-			break
-		case &utility.CommandMac:
-			bindMac = *command.Value.(*string)
-			break
-		case &utility.CommandSecs:
-			secs = *command.Value.(*time.Duration)
-			break
-		case &utility.CommandQuiet:
-			quiet = *command.Value.(*bool)
-			break
-		case &utility.CommandQuery:
-			query = *command.Value.(*bool)
-			break
-		case &utility.CommandWait:
-			wait = *command.Value.(*bool)
-			break
-		case &utility.CommandOption:
-			option = *command.Value.(*utility.RequestParams)
-			break
-		case &utility.CommandRequest:
-			request = *command.Value.(*string)
-			break
-		case &utility.CommandPrint:
-			printOnly = *command.Value.(*string)
-			break
-		case &utility.CommandTimeOut:
-			timeout = *command.Value.(*time.Duration)
-			break
-		case &utility.CommandTry:
-			try = *command.Value.(*int)
-			break
-		case &utility.CommandRequestIP:
-			requestIP = *command.Value.(*string)
-			break
-		case &utility.CommandOnlyDisover:
-			onlyDiscover = *command.Value.(*bool)
-			break
-		default:
-			break
-		}
-	}
-}
