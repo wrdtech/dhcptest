@@ -14,8 +14,8 @@ const (
 )
 
 var (
-	DefaultReadTimeout = 2 * time.Second
-	DefaultWriteTimeout = 2 * time.Second
+	DefaultReadTimeout = 1 * time.Second
+	DefaultWriteTimeout = 1 * time.Second
     DefaultParamsRequestList = []layers.DHCPOpt{
 		layers.DHCPOptSubnetMask,
 		layers.DHCPOptRouter,
@@ -101,7 +101,7 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		packet := e.object.(*layers.DHCPv4)
 		pr.AddPacket(packet)
 		pr.dLastTimer = time.NewTimer(utility.Timeout)
-		utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
+		//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
 	})
 	pr.dispatcher.AddEventListener(receivedOffer, func(e PacketEvent) {
 		select {
@@ -110,7 +110,7 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
+			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
 //			pr.resChan <- packet
 		}
 	})
@@ -122,7 +122,7 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		packet := e.object.(*layers.DHCPv4)
 		pr.AddPacket(packet)
 		pr.rLastTimer = time.NewTimer(utility.Timeout)
-		utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
+		//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
 	})
 	pr.dispatcher.AddEventListener(receivedAck, func (e PacketEvent) {
 		select {
@@ -131,7 +131,7 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
+			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
 //			pr.resChan <- packet
 		}
 	})
@@ -142,7 +142,7 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
+			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
 //			pr.resChan <- packet
 		}
 	})

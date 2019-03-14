@@ -13,41 +13,41 @@ type Counter struct {
 	request int
 	response int
 	percentage float32
-	qLock *sync.RWMutex
-	rLock *sync.RWMutex
+	qLock *sync.Mutex
+	rLock *sync.Mutex
 }
 
 func (c *Counter) Init() {
-	c.qLock = new(sync.RWMutex)
-	c.rLock = new(sync.RWMutex)
+	c.qLock = new(sync.Mutex)
+	c.rLock = new(sync.Mutex)
 }
 
 func (c *Counter) GetRequest() int {
-	c.qLock.RLock()
+	//c.qLock.Lock()
 	request := c.request
-	c.qLock.RUnlock()
+	//c.qLock.Unlock()
 	return request
 }
 
 func (c *Counter) GetResponse() int {
-	c.rLock.RLock()
+	//c.rLock.Lock()
 	response := c.response
-	c.rLock.RUnlock()
+	//c.rLock.Unlock()
 	return response
 }
 
 func (c *Counter) AddRequest(n int) {
 	request := c.GetRequest()
-	c.qLock.Lock()
+	//c.qLock.Lock()
 	c.request = request + n
-	c.qLock.Unlock()
+	//c.qLock.Unlock()
 }
 
 func (c *Counter) AddResponse(n int) {
 	response := c.GetResponse()
-	c.rLock.Lock()
+	//c.rLock.Lock()
 	c.response = response + n
-	c.rLock.Unlock()
+	//c.rLock.Unlock()
 }
 
 func (c *Counter) GetPercentage() string {

@@ -178,23 +178,33 @@ func main() {
 					bender.Record(recorder)
 					//fmt.Println(h)
 				}()
+				//低延迟读取 不要使用共享数据来通信；使用通信来共享数据
 				go func() {
 					ticker := time.NewTicker(time.Second * 5)
 					current_time := time.Now()
 					for {
 						select {
 						case <-ticker.C:
+							request, response := dc.GetRequestAndResponse()
+							now_time := time.Now()
+							during := int(now_time.Sub(current_time).Seconds())
+							log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during, response/during)
+							/*
 							request, response := 0, 0
 							for _, mac := range macList {
 								if counter, ok := utility.DHCPCounter[mac.String()]; ok {
+									//log.Printf("mac: %s,request: %d, response: %d\n", mac, counter.GetRequest(), counter.GetResponse())
+									time.Sleep(time.Millisecond * time.Duration(100))
 									request = request + counter.GetRequest()
 									response = response + counter.GetResponse()
+									log.Printf("mac: %s,request: %d, response: %d\n", mac, counter.GetRequest(), counter.GetResponse())
 								}
 							}
 							now_time := time.Now()
-							during := now_time.Sub(current_time).Seconds()
-							log.Printf("request: %d, response: %d, qSpeed: %.2f, pSpeed: %.2f", request, response, float64(request) / during,
-								float64(response)/during)
+							during := int(now_time.Sub(current_time).Seconds())
+							log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during,
+								response/during)
+							*/
 						case <-loggerC:
 							log.Println("logger stop")
 							return

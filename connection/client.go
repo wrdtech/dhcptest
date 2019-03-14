@@ -28,6 +28,10 @@ type DhcpClient struct {
 	packets map[uint32]*PacketResponse
 	packetsLock *sync.Mutex
 	stop chan int
+	requestSend chan int
+	requestGet chan int
+	responseSend chan int
+	responseGet chan int
 	wg *sync.WaitGroup
 }
 
@@ -59,19 +63,71 @@ func (dc *DhcpClient) Start(size int, ifRequest bool) {
 	dc.sendQueue = make(chan *layers.DHCPv4, dc.BufferSize)
 	dc.errors = make(chan error, dc.BufferSize)
 	dc.packets = make(map[uint32]*PacketResponse)
+	dc.requestSend = make(chan int, dc.BufferSize)
+	dc.requestGet = make(chan int)
+	dc.responseSend =  make(chan int, dc.BufferSize)
+	dc.responseGet = make(chan int)
 	dc.stop  = make(chan int)
-	dc.wg.Add(3)
+	dc.wg.Add(4)
 	go dc.errorLoop()
 	go dc.listenLoop()
 	go dc.sendLoop()
+	go dc.counter()
+}
+
+func (dc *DhcpClient) counter() {
+	log.Println("counter goroutine start")
+	request, response := 0,0
+	ticket := time.NewTicker(time.Second * time.Duration(5))
+	defer func(){
+		dc.wg.Done()
+	}()
+	for {
+		select {
+		case <-dc.stop:
+			log.Println("counter goroutine stop")
+			return
+		default:
+		}
+		select {
+		case amount := <-dc.requestSend:
+			request = request + amount
+		default:
+		}
+		select {
+		case amount := <-dc.responseSend:
+			response = response + amount
+		default:
+		}
+		select {
+		case <- ticket.C:
+			dc.requestGet <- request
+			dc.responseGet <- response
+		default:
+		}
+	}
+}
+
+func (dc *DhcpClient) GetRequestAndResponse() (request int, response int) {
+	select {
+	case request = <- dc.requestGet:
+	}
+	select {
+	case response = <- dc.responseGet:
+	}
+	return request, response
 }
 
 func (dc *DhcpClient) Stop() {
 	log.Printf("[%s] shutting down dhcp client", dc.Iface.Name)
-	dc.done(3)
+	dc.done(4)
 	dc.wg.Wait()
 	close(dc.sendQueue)
 	close(dc.errors)
+	close(dc.requestSend)
+	close(dc.responseSend)
+	close(dc.requestGet)
+	close(dc.responseGet)
 	log.Printf("[%s] shutting down dhcp client over", dc.Iface.Name)
 
 }
@@ -115,6 +171,7 @@ func (dc *DhcpClient) sendLoop() {
 			log.Println("send loop stop")
 			return
 		case packet := <- dc.sendQueue:
+			dc.requestSend <- 1
 			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
 			dc.packetsLock.Lock()
 			pr, ok := dc.packets[packet.Xid]
@@ -184,6 +241,7 @@ func (dc *DhcpClient) listenLoop() {
 			}
 			dc.packetsLock.Lock()
 			if pr, ok := dc.packets[packet.Xid];ok && packet.Operation == layers.DHCPOpReply {
+				dc.responseSend <- 1
 				//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
 				if packet.MessageType() == layers.DHCPMsgTypeOffer {
 					pr.Call(NewEvent(receivedOffer, packet))
