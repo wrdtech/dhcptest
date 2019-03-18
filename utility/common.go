@@ -8,6 +8,9 @@ import (
 )
 
 func GetInterfaceByIP(ip string, validip map[string]net.Interface) (*net.Interface, error) {
+	if ip == "0.0.0.0" {
+		return &net.Interface{Name:""}, nil
+	}
 	iface, ok := validip[ip]
 	if !ok {
 		return nil, fmt.Errorf("invalid ip:%s", ip)

@@ -14,8 +14,8 @@ const (
 )
 
 var (
-	DefaultReadTimeout = 1 * time.Second
-	DefaultWriteTimeout = 1 * time.Second
+	DefaultReadTimeout = 2 * time.Second
+	DefaultWriteTimeout = 2 * time.Second
     DefaultParamsRequestList = []layers.DHCPOpt{
 		layers.DHCPOptSubnetMask,
 		layers.DHCPOptRouter,
@@ -73,7 +73,6 @@ type PacketResponse struct {
 	dLastTimer *time.Timer
 	rLastTimer *time.Timer
 	packets    map[layers.DHCPMsgType][]*layers.DHCPv4
-	//resChan    chan *layers.DHCPv4
 
 }
 
@@ -86,22 +85,14 @@ func (pr *PacketResponse) AddPacket(packet *layers.DHCPv4) {
 	pr.packets[packet.MessageType()] = append(pr.packets[packet.MessageType()], packet)
 }
 
-/*
-func (pr *PacketResponse) GetResponseChannel() chan *layers.DHCPv4 {
-	return pr.resChan
-}
-*/
-
-func NewPacketResponse(bufferSize int) *PacketResponse {
+func NewPacketResponse() *PacketResponse {
 	pr := &PacketResponse{}
 	pr.packets = make(map[layers.DHCPMsgType][]*layers.DHCPv4)
 	pr.dispatcher = new(PacketEventDispatcher)
-//	pr.resChan = make(chan *layers.DHCPv4, bufferSize)
 	pr.dispatcher.AddEventListener(discoverDequeue, func(e PacketEvent) {
 		packet := e.object.(*layers.DHCPv4)
 		pr.AddPacket(packet)
 		pr.dLastTimer = time.NewTimer(utility.Timeout)
-		//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
 	})
 	pr.dispatcher.AddEventListener(receivedOffer, func(e PacketEvent) {
 		select {
@@ -110,8 +101,6 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
-//			pr.resChan <- packet
 		}
 	})
 	pr.dispatcher.AddEventListener(offerTimeout, func(e PacketEvent) {
@@ -122,7 +111,6 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		packet := e.object.(*layers.DHCPv4)
 		pr.AddPacket(packet)
 		pr.rLastTimer = time.NewTimer(utility.Timeout)
-		//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
 	})
 	pr.dispatcher.AddEventListener(receivedAck, func (e PacketEvent) {
 		select {
@@ -131,8 +119,6 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
-//			pr.resChan <- packet
 		}
 	})
 	pr.dispatcher.AddEventListener(receivedNak, func (e PacketEvent) {
@@ -142,8 +128,6 @@ func NewPacketResponse(bufferSize int) *PacketResponse {
 		default:
 			packet := e.object.(*layers.DHCPv4)
 			pr.AddPacket(packet)
-			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
-//			pr.resChan <- packet
 		}
 	})
 	pr.dispatcher.AddEventListener(ackNakTimeout, func(e PacketEvent) {

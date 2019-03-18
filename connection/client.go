@@ -3,6 +3,7 @@ package connection
 import (
 	"dhcptest/layers"
 	"dhcptest/utility"
+	"fmt"
 	"github.com/google/gopacket"
 	"log"
 	"net"
@@ -19,12 +20,13 @@ type DhcpClient struct {
 	Iface *net.Interface
 	BufferSize int
 	Raddr net.UDPAddr
-	IfRequest bool
+	ifRequest bool
+	ifLog     bool
 	connection net.PacketConn
 	laddr net.UDPAddr
 	logger *utility.Log
 	sendQueue chan *layers.DHCPv4
-	errors chan error
+	messages chan interface{}
 	packets map[uint32]*PacketResponse
 	packetsLock *sync.Mutex
 	stop chan int
@@ -32,6 +34,7 @@ type DhcpClient struct {
 	requestGet chan int
 	responseSend chan int
 	responseGet chan int
+	workers  []func()
 	wg *sync.WaitGroup
 }
 
@@ -57,22 +60,34 @@ func (dc *DhcpClient) Close() error {
 	return nil
 }
 
-func (dc *DhcpClient) Start(size int, ifRequest bool) {
+func (dc *DhcpClient) Start(size int, ifRequest bool, ifLog bool) {
 	dc.BufferSize = size
-	dc.IfRequest = ifRequest
+	dc.ifRequest = ifRequest
+	dc.ifLog = ifLog
 	dc.sendQueue = make(chan *layers.DHCPv4, dc.BufferSize)
-	dc.errors = make(chan error, dc.BufferSize)
+	dc.messages = make(chan interface{}, dc.BufferSize)
 	dc.packets = make(map[uint32]*PacketResponse)
 	dc.requestSend = make(chan int, dc.BufferSize)
 	dc.requestGet = make(chan int)
 	dc.responseSend =  make(chan int, dc.BufferSize)
 	dc.responseGet = make(chan int)
 	dc.stop  = make(chan int)
-	dc.wg.Add(4)
-	go dc.errorLoop()
-	go dc.listenLoop()
-	go dc.sendLoop()
-	go dc.counter()
+	dc.workers = make([]func(), 0)
+	dc.workers = append(dc.workers, dc.messageLoop)
+	dc.workers = append(dc.workers, dc.listenLoop)
+	dc.workers = append(dc.workers, dc.sendLoop)
+	dc.wg.Add(3)
+	if !dc.ifLog {
+		dc.workers = append(dc.workers, dc.counter)
+		dc.wg.Add(1)
+	}
+	dc.startWorkers()
+}
+
+func (dc *DhcpClient) startWorkers() {
+	for _, worker := range dc.workers {
+		go worker()
+	}
 }
 
 func (dc *DhcpClient) counter() {
@@ -120,10 +135,10 @@ func (dc *DhcpClient) GetRequestAndResponse() (request int, response int) {
 
 func (dc *DhcpClient) Stop() {
 	log.Printf("[%s] shutting down dhcp client", dc.Iface.Name)
-	dc.done(4)
+	dc.stopWorkers()
 	dc.wg.Wait()
 	close(dc.sendQueue)
-	close(dc.errors)
+	close(dc.messages)
 	close(dc.requestSend)
 	close(dc.responseSend)
 	close(dc.requestGet)
@@ -132,7 +147,8 @@ func (dc *DhcpClient) Stop() {
 
 }
 
-func (dc *DhcpClient) done(num int) {
+func (dc *DhcpClient) stopWorkers() {
+	num := len(dc.workers)
 	for i := 0; i < num; i++ {
 		dc.stop <- 1
 	}
@@ -165,14 +181,27 @@ func (dc *DhcpClient) sendLoop() {
 		dc.wg.Done()
 	}()
 
+	//request := 0
+	//ticker := time.NewTicker(time.Second)
+
 	for {
 		select {
 		case <- dc.stop:
 			log.Println("send loop stop")
 			return
 		case packet := <- dc.sendQueue:
-			dc.requestSend <- 1
-			//utility.DHCPCounter[packet.ClientHWAddr.String()].AddRequest(1)
+
+			/*速度调试 用
+			request = request + 1
+			select  {
+			case <- ticker.C:
+				log.Printf("request count from sendqueue: %d", request)
+			default:
+
+			}
+			*/
+			//顺序结构，对packets中某一xid的不会同时进行读写操作,貌似可以不用互斥锁.但是xid会有重复，造成对相同键值的同时读写,仍会出错
+
 			dc.packetsLock.Lock()
 			pr, ok := dc.packets[packet.Xid]
 			dc.packetsLock.Unlock()
@@ -182,18 +211,23 @@ func (dc *DhcpClient) sendLoop() {
 				} else if packet.MessageType() == layers.DHCPMsgTypeRequest {
 					pr.Call(NewEvent(requestDequeue, packet))
 				}
-				//log.Printf("get packet %s\n", packet)
-				err := dc.send(packet)
-				if err != nil {
-					dc.errors <- err
+				if dc.ifLog {
+					dc.addMessage(packet)
 				}
+				err := dc.send(packet)
+				dc.requestSend <- 1
+				if err != nil {
+					dc.addMessage(err)
+				}
+			} else {
+				dc.addMessage(fmt.Errorf("xid %d not found in packets\n", packet.Xid))
 			}
 		}
 	}
 }
 
-func (dc *DhcpClient) errorLoop() {
-	log.Println("error loop start")
+func (dc *DhcpClient) messageLoop() {
+	log.Println("message loop start")
 	defer func() {
 		dc.wg.Done()
 	}()
@@ -201,16 +235,16 @@ func (dc *DhcpClient) errorLoop() {
 	for {
 		select {
 		case <- dc.stop:
-			log.Println("error loop stop")
+			log.Println("message loop stop")
 			return
-		case err := <-dc.errors:
-			log.Println(err)
+		case message := <-dc.messages:
+			dc.logger.PrintLog(message)
 		}
 	}
 }
 
-func (dc *DhcpClient) addError(err error) {
-	dc.errors <- err
+func (dc *DhcpClient) addMessage(message interface{}) {
+	dc.messages <- message
 }
 
 func (dc *DhcpClient) listenLoop() {
@@ -230,7 +264,7 @@ func (dc *DhcpClient) listenLoop() {
 			_, _, err := dc.connection.ReadFrom(recvBuf)
 
 			if err != nil {
-				dc.addError(err)
+				dc.addMessage(err)
 				continue
 			}
 
@@ -242,10 +276,12 @@ func (dc *DhcpClient) listenLoop() {
 			dc.packetsLock.Lock()
 			if pr, ok := dc.packets[packet.Xid];ok && packet.Operation == layers.DHCPOpReply {
 				dc.responseSend <- 1
-				//utility.DHCPCounter[packet.ClientHWAddr.String()].AddResponse(1)
+				if dc.ifLog {
+					dc.addMessage(packet)
+				}
 				if packet.MessageType() == layers.DHCPMsgTypeOffer {
 					pr.Call(NewEvent(receivedOffer, packet))
-					if dc.IfRequest {
+					if dc.ifRequest {
 						dc.sendQueue <- NewRequestFromOffer(packet)
 					}
 				} else if packet.MessageType() == layers.DHCPMsgTypeAck {
@@ -270,12 +306,11 @@ func (dc *DhcpClient) Send(packet *layers.DHCPv4, modifiers ...Modifier) *Packet
 		modifier(packet)
 	}
 
-	pr := NewPacketResponse(dc.BufferSize)
+	pr := NewPacketResponse()
 	dc.packetsLock.Lock()
 	dc.packets[packet.Xid] = pr
 	dc.packetsLock.Unlock()
 	dc.sendQueue <- packet
-	//log.Printf("sendqueue enter %s\n", packet)
 	return pr
 }
 

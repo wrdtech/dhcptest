@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/pinterest/bender"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -15,7 +16,14 @@ import (
 	"time"
 )
 
+var (
+	intervalC chan int
+	loggerC chan int
+)
+
 func init() {
+	intervalC = make(chan int)
+	loggerC = make(chan int)
 	fmt.Println("dhcptest v0.1 -Created by WRD, based on gopacket")
 	fmt.Println("Run with --help for a list of command-line options")
 }
@@ -59,7 +67,7 @@ func main() {
 	}
 	*/
 
-	dc := connection.DhcpClient{
+	dc := &connection.DhcpClient{
 		BindIP:    net.ParseIP(utility.BindIP),
 		//ClientMac: clientMac,
 		Iface:     iface,
@@ -68,8 +76,6 @@ func main() {
 	dc.Open()
 	defer dc.Close()
 
-	intervalC := make(chan int)
-	loggerC := make(chan int)
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Println("Type \"d\" to broadcast a DHCP discover packet, or \"help\" for details")
 	for {
@@ -92,155 +98,170 @@ func main() {
 			fmt.Printf("\t d / discover\n" +
 				"\t\t Broadcasts a DHCP discover packet.\n" +
 				"\t\t You can optionally specify the device num and request rate\n" +
-				"\t\t to use for the stress testing, e.g.\n" +
+				"\t\t to use for the throughput testing, e.g.\n" +
 				"\t\t \"d 5 100\" will pretend 5 terminals and request\n" +
-				"\t\t 100 times per minute.\n")
+				"\t\t 100 times per second.\n" +
+				"\t\t You can also only specify the device num to use for one-time request\n" +
+				"\t\t dhcp packet message will be printed.The default value is 1 when the device num is omitted\n")
 			fmt.Printf("\t r / request\n" +
 				"\t\t Broadcast a DHCP discover.Then broadcast a DHCP request packet when you gen an offer packet.\n" +
 				"\t\t You can also specify parameters as d command does.\n")
+			fmt.Printf("\t s / stop used for stop the dhcp client\n")
 			fmt.Printf("\t h / help\n" +
 				"\t\t Print this message.\n")
 			fmt.Printf("\t q / quit\n" +
 				"\t\t Quits the program\n")
-		case "d", "discover", "r", "request":
-			utility.DHCPCounter = make(map[string]*utility.Counter)
-			//init deviceNum
-			deviceNum := 1
-			if len(params) >= 2 {
-				var err error
-				deviceNum, err = strconv.Atoi(params[1])
-				if err != nil {
-					log.Println(err)
-					continue
-				}
+		case "d", "discover":
+			err = sendDHCP(params, dc, false)
+			if err != nil {
+				log.Println(err)
 			}
-			fmt.Printf("the %d device mac is: ", deviceNum)
-			var macList []net.HardwareAddr
-			for i:=0; i< deviceNum; i++ {
-				mac, err := net.ParseMAC(utility.RandomMac())
-				time.Sleep(time.Millisecond) //only ensure time seed different
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				macList = append(macList, mac)
-				counter := new(utility.Counter)
-				counter.Init()
-				utility.DHCPCounter[mac.String()] = counter
-				fmt.Printf("%s ", mac)
+		case "r", "request":
+			err = sendDHCP(params, dc, true)
+			if err != nil {
+				log.Println(err)
 			}
-			fmt.Println()
-
-
-			//init rate
-			if len(params) == 3 {
-				rate, err := strconv.Atoi(params[2])
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				//send func
-				go func() {
-					dc.Start(rate * 10, false)
-					defer dc.Stop()
-					requests := make(chan interface{}, rate * 10)
-					ticker := time.NewTicker(time.Microsecond * time.Duration(1000 * 1000 / rate))
-					fmt.Printf("rate: %d qps, interval: %s\n", rate,time.Microsecond * time.Duration(1000 * 1000 / rate))
-					go func() {
-						defer close(requests)
-						index := 0
-						for {
-							select {
-							case <-ticker.C:
-								mac := macList[index]
-								packet := connection.NewPacket(utility.DhcpOptions...)
-								connection.WithHWType(layers.LinkTypeEthernet)(packet)
-								connection.WithHwAddr(mac)(packet)
-								connection.WithMessageType(layers.DHCPMsgTypeDiscover)(packet)
-								//log.Printf("generate request %s\n", packet)
-								requests <- packet
-								if index = index +1 ; index == deviceNum {
-									index = 0
-							    }
-							case <-intervalC:
-								log.Println("ticker stop")
-								return
-							}
-						}
-					}()
-					intervals := bender.UniformIntervalGenerator(float64(rate))
-					exec := connection.CreateExecutor(&dc)
-					recorder := make(chan interface{}, rate * 10)
-					bender.LoadTestThroughput(intervals, requests, exec, recorder)
-					//l := log.New(os.Stdout, "", log.LstdFlags)
-					//h := hist.NewHistogram(60000, int(time.Microsecond))
-					//bender.Record(recorder, bender.NewLoggingRecorder(l), bender.NewHistogramRecorder(h))
-					bender.Record(recorder)
-					//fmt.Println(h)
-				}()
-				//低延迟读取 不要使用共享数据来通信；使用通信来共享数据
-				go func() {
-					ticker := time.NewTicker(time.Second * 5)
-					current_time := time.Now()
-					for {
-						select {
-						case <-ticker.C:
-							request, response := dc.GetRequestAndResponse()
-							now_time := time.Now()
-							during := int(now_time.Sub(current_time).Seconds())
-							log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during, response/during)
-							/*
-							request, response := 0, 0
-							for _, mac := range macList {
-								if counter, ok := utility.DHCPCounter[mac.String()]; ok {
-									//log.Printf("mac: %s,request: %d, response: %d\n", mac, counter.GetRequest(), counter.GetResponse())
-									time.Sleep(time.Millisecond * time.Duration(100))
-									request = request + counter.GetRequest()
-									response = response + counter.GetResponse()
-									log.Printf("mac: %s,request: %d, response: %d\n", mac, counter.GetRequest(), counter.GetResponse())
-								}
-							}
-							now_time := time.Now()
-							during := int(now_time.Sub(current_time).Seconds())
-							log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during,
-								response/during)
-							*/
-						case <-loggerC:
-							log.Println("logger stop")
-							return
-						}
-					}
-				}()
-			} else {
-				/*
-				dc.InitListenThread(1)
-				send()
-				go func() {
-					ticker := time.NewTimer(timeout)
-					select {
-					case <-ticker.C:
-						for _, mac := range macList {
-							if counter, ok := utility.DHCPCounter[mac.String()]; ok {
-								log.Printf("mac:%s, request: %d, response: %d, percentage: %s",
-									mac,
-									counter.GetRequest(),
-									counter.GetResponse(),
-									counter.GetPercentage())
-							}
-						}
-				    case <-loggerC:
-						log.Println("logger stop")
-						return
-					}
-				}()
-				*/
-			}
-		case "s":
+		case "s", "stop":
 			intervalC <- 1
 			loggerC <- 1
 		default:
 			fmt.Println("Enter a supported command, Type \"help\" for details")
 		}
 	}
+}
+
+func sendDHCP(params []string, dc *connection.DhcpClient, ifRequest bool) error {
+	//init deviceNum
+	deviceNum := 1
+	if len(params) >= 2 {
+		var err error
+		deviceNum, err = strconv.Atoi(params[1])
+		if err != nil {
+			return err
+		}
+	}
+	fmt.Printf("the %d device mac is: ", deviceNum)
+	var macList []net.HardwareAddr
+	for i:=0; i< deviceNum; i++ {
+		mac, err := net.ParseMAC(utility.RandomMac())
+		time.Sleep(time.Millisecond) //only ensure time seed different
+		if err != nil {
+			return err
+		}
+		macList = append(macList, mac)
+		fmt.Printf("%s ", mac)
+	}
+	fmt.Println()
+
+
+	//init rate
+	if len(params) == 3 {
+		rate, err := strconv.Atoi(params[2])
+		if err != nil {
+			return err
+		}
+		//send func
+		go func() {
+			/* cpu  or memory test
+			fc, err := os.OpenFile("./cpu.prof", os.O_RDWR | os.O_CREATE, 0644)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			defer fc.Close()
+			pprof.StartCPUProfile(fc)
+			defer pprof.StopCPUProfile()
+
+			fm, err := os.OpenFile("./memory.prof", os.O_RDWR | os.O_CREATE, 0644)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			defer fm.Close()
+			pprof.WriteHeapProfile(fm)
+			*/
+
+			dc.Start(rate * 3, ifRequest, false)
+			defer dc.Stop()
+			requests := make(chan interface{}, rate * 3)
+			ticker := time.NewTicker(time.Second)
+			//countTicker测试用
+			//countTicker := time.NewTicker(time.Second)
+			//windows下的ticker精度是ms级(本次测试2ms) 所以在1s的ticker内循环rate次
+			go func() {
+				defer close(requests)
+				index := 0
+				//request := 0
+				for {
+					select {
+					case <-ticker.C:
+						for i:=0; i < rate; i++ {
+							mac := macList[index]
+							packet := connection.NewPacket(utility.DhcpOptions...)
+							connection.WithHWType(layers.LinkTypeEthernet)(packet)
+							connection.WithHwAddr(mac)(packet)
+							connection.WithMessageType(layers.DHCPMsgTypeDiscover)(packet)
+							requests <- packet
+							//request = request + 1
+							if index = index +1 ; index == deviceNum {
+								index = 0
+							}
+						}
+					case <-intervalC:
+						log.Println("ticker stop")
+						return
+					}
+					/*
+					select {
+					case <-countTicker.C:
+						log.Printf("produce request count : %d\n", request)
+					default:
+					}
+					*/
+				}
+			}()
+			intervals := bender.ExponentialIntervalGenerator(float64(rate))
+			exec := connection.CreateExecutor(dc)
+			bender.LoadTestThroughput(intervals, requests, exec)
+		}()
+		//低延迟读取 不要使用共享数据来通信；使用通信来共享数据
+		go func() {
+			ticker := time.NewTicker(time.Second * 5)
+			current_time := time.Now()
+			for {
+				select {
+				case <-ticker.C:
+					request, response := dc.GetRequestAndResponse()
+					now_time := time.Now()
+					during := int(now_time.Sub(current_time).Seconds())
+					log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during, response/during)
+				case <-loggerC:
+					log.Println("logger stop")
+					return
+				}
+			}
+		}()
+	} else {
+		go func() {
+			dc.Start(deviceNum, ifRequest, true)
+			defer dc.Stop()
+			for i:=0; i < deviceNum; i++ {
+				mac := macList[i]
+				packet := connection.NewPacket(utility.DhcpOptions...)
+				connection.WithHWType(layers.LinkTypeEthernet)(packet)
+				connection.WithHwAddr(mac)(packet)
+				connection.WithMessageType(layers.DHCPMsgTypeDiscover)(packet)
+				dc.Send(packet, connection.WithTransactionID(rand.Uint32()))
+			}
+			select {
+			case <- intervalC:
+				<-loggerC
+				return
+			}
+		}()
+	}
+	return nil
 }
 

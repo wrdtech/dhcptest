@@ -83,12 +83,10 @@ type EndRequestEvent struct {
 
 // LoadTestThroughput starts a load test in which the caller controls the interval between requests
 // being sent. See the package documentation for details on the arguments to this function.
-func LoadTestThroughput(intervals IntervalGenerator, requests chan interface{}, requestExec RequestExecutor, recorder chan interface{}) {
-	go func() {
-		start := time.Now().UnixNano()
-		recorder <- &StartEvent{start}
+func LoadTestThroughput(intervals IntervalGenerator, requests chan interface{}, requestExec RequestExecutor) {
+		//start := time.Now().UnixNano()
+		//recorder <- &StartEvent{start}
 
-		var wg sync.WaitGroup
 		var overage int64
 		overageStart := time.Now().UnixNano()
 		for request := range requests {
@@ -96,25 +94,19 @@ func LoadTestThroughput(intervals IntervalGenerator, requests chan interface{}, 
 			adjust := int64(math.Min(float64(wait), float64(overage)))
 			wait -= adjust
 			overage -= adjust
-			recorder <- &WaitEvent{wait, overage}
+		//	recorder <- &WaitEvent{wait, overage}
 			time.Sleep(time.Duration(wait))
 
-			wg.Add(1)
-			go func(req interface{}) {
-				defer wg.Done()
-				recorder <- &StartRequestEvent{time.Now().UnixNano(), req}
-				reqStart := time.Now().UnixNano()
-				res, err := requestExec(time.Now().UnixNano(), req)
-				recorder <- &EndRequestEvent{reqStart, time.Now().UnixNano(), res, err}
-			}(request)
+		//	recorder <- &StartRequestEvent{time.Now().UnixNano(), request}
+		//  reqStart := time.Now().UnixNano()
+			_, _ = requestExec(time.Now().UnixNano(), request)
+		//	recorder <- &EndRequestEvent{reqStart, time.Now().UnixNano(), res, err}
 
 			overage += time.Now().UnixNano() - overageStart - wait
 			overageStart = time.Now().UnixNano()
 		}
-		wg.Wait()
-		recorder <- &EndEvent{start, time.Now().UnixNano()}
-		close(recorder)
-	}()
+		//recorder <- &EndEvent{start, time.Now().UnixNano()}
+		//close(recorder)
 }
 
 type empty struct{}

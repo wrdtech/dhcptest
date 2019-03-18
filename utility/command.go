@@ -23,7 +23,6 @@ var (
 	Timeout      time.Duration
 	Try          int
 	RequestIP    string
-	OnlyDiscover bool
 	DhcpOptions  layers.DHCPOptions
 )
 
@@ -71,7 +70,6 @@ var (
 	CommandTimeOut        = CommandFlag{Name: "timeout",      usage: "  --timeout N     Wait N seconds for a reply, after which retry or exit.\r\n\t\t  Default is 60 seconds. Can be a fractional number.\r\n\t\t  A Value of 0 causes dhcptest to wait indefinitely."}
 	CommandTry            = CommandFlag{Name: "tries",        usage: "  --tries N       Send N DHCP discover packets after each timeout interval.\r\n\t\t  Specify N=0 to retry indefinitely."}
 	CommandRequestIP      = CommandFlag{Name: "requestip",    usage: "  --requestip IP  Specify the IP Address you want to get for the client mac"}
-	CommandOnlyDisover    = CommandFlag{Name: "onlydiscover", usage: "  --onlydiscover  only send discover packet"}
 
 
 	CommandList = []Command{
@@ -90,7 +88,6 @@ var (
 	Command{CommandFlag: &CommandTimeOut, Value: flag.Duration(CommandTimeOut.Name, 10*time.Second, CommandTimeOut.usage)},
 	Command{CommandFlag: &CommandTry, Value: flag.Int(CommandTry.Name, 1, CommandTry.usage)},
 	Command{CommandFlag: &CommandRequestIP, Value: flag.String(CommandRequestIP.Name, "", CommandRequestIP.usage)},
-	Command{CommandFlag: &CommandOnlyDisover, Value: flag.Bool(CommandOnlyDisover.Name,  false, CommandOnlyDisover.usage)},
     }
 )
 
@@ -192,9 +189,6 @@ func getOpts() {
 			break
 		case &CommandRequestIP:
 			RequestIP = *command.Value.(*string)
-			break
-		case &CommandOnlyDisover:
-			OnlyDiscover = *command.Value.(*bool)
 			break
 		default:
 			break

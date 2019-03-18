@@ -1,2 +1,4 @@
 /.idea/
 /*.exe
+/main
+/*.prof
