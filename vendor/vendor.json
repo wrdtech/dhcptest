@@ -21,6 +21,12 @@
 			"revisionTime": "2019-02-18T23:36:03Z"
 		},
 		{
+			"checksumSHA1": "jquXXdzrifRAEeK41zBn2fGRCOk=",
+			"path": "github.com/mdlayher/raw",
+			"revision": "8be9e99c38b65c0e12178c588b13c62ac4669a1f",
+			"revisionTime": "2019-03-15T12:04:51Z"
+		},
+		{
 			"checksumSHA1": "HmTt2Qgzwx0VU7NVRHQ6l6W7s0s=",
 			"path": "github.com/pinterest/bender",
 			"revision": "3fd6665c43e7630141cc993bf1a421d4ad937b99",
@@ -37,6 +43,12 @@
 			"path": "github.com/pkg/errors",
 			"revision": "ffb6e22f01932bf7ac35e0bad9be11f01d1c8685",
 			"revisionTime": "2019-01-09T06:16:28Z"
+		},
+		{
+			"checksumSHA1": "Pa6ivEz5fid3ECb1hptNbC+USfA=",
+			"path": "golang.org/x/net/bpf",
+			"revision": "9f648a60d9775ef5c977e7669d1673a7a67bef33",
+			"revisionTime": "2019-03-13T06:50:29Z"
 		},
 		{
 			"checksumSHA1": "sEnY0M5iGRsoXHsjHqFVLPc+OQs=",

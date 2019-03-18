@@ -7,13 +7,10 @@ import (
 	"time"
 )
 
-func GetInterfaceByIP(ip string, validip map[string]net.Interface) (*net.Interface, error) {
-	if ip == "0.0.0.0" {
-		return &net.Interface{Name:""}, nil
-	}
-	iface, ok := validip[ip]
+func GetInterfaceByName(ifaceName string, validIface map[string]net.Interface) (*net.Interface, error) {
+	iface, ok := validIface[ifaceName]
 	if !ok {
-		return nil, fmt.Errorf("invalid ip:%s", ip)
+		return nil, fmt.Errorf("invalid iface:%s", iface)
 	}
 	return &iface, nil
 }

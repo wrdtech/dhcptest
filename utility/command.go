@@ -11,7 +11,7 @@ import (
 
 var (
 	Help         bool
-	BindIP       string
+	BindIface    string
 	BindMac      string
 	Secs         time.Duration
 	Quiet        bool
@@ -52,13 +52,13 @@ func (r *RequestParams) Get() interface{} {
 }
 
 var (
-	ValidIP = make(map[string]net.Interface)
+	ValidIface = make(map[string]net.Interface)
 	optionRequest = RequestParams{}
 
 	CommandHelp           = CommandFlag{Name: "help",         usage: "  --help          get a list of command-line options"}
 	CommandOptionHelp     = CommandFlag{Name: "optionhelp",   usage: "  --optionhelp    get a list of dhcp option"}
-	CommandIPList         = CommandFlag{Name: "iplist",       usage: "  --iplist        get a list of avaliable ip(only v4)"}
-	CommandBindIP         = CommandFlag{Name: "bind",         usage: "  --bind IP       Listen on the interface with the specified IP.\r\n\t\t  The default is to listen on all interfaces (0.0.0.0)."}
+	CommandIfaceList      = CommandFlag{Name: "iface-list",   usage: "  --iface-list    get a list of avaliable ip(only v4)"}
+	CommandBindIface      = CommandFlag{Name: "bind",         usage: "  --bind Iface    Listen on the interface with the specified IP.\r\n\t\t  The default is to listen on all interfaces (0.0.0.0)."}
 	CommandMac            = CommandFlag{Name: "mac",          usage: "  --mac MAC       Specify a MAC address to use for the client hardware\r\n\t\t  address field (chaddr), in the format NN:NN:NN:NN:NN:NN"}
 	CommandSecs           = CommandFlag{Name: "secs",         usage: "  --secs          Specify the \"Secs\" request field (number of seconds elapsed\r\n\t\t  since a client began an attempt to acquire or renew a lease)"}
 	CommandQuiet          = CommandFlag{Name: "quiet",        usage: "  --quiet         Suppress program output except for received data\r\n\t\t  and error messages"}
@@ -75,8 +75,8 @@ var (
 	CommandList = []Command{
 	Command{CommandFlag: &CommandHelp, Value: flag.Bool(CommandHelp.Name, false, CommandHelp.usage)},
 	Command{CommandFlag: &CommandOptionHelp, Value: flag.Bool(CommandOptionHelp.Name, false, CommandOptionHelp.usage)},
-	Command{CommandFlag: &CommandIPList, Value: flag.Bool(CommandIPList.Name, false, CommandIPList.usage)},
-	Command{CommandFlag: &CommandBindIP, Value: flag.String(CommandBindIP.Name, "0.0.0.0", CommandBindIP.usage)},
+	Command{CommandFlag: &CommandIfaceList, Value: flag.Bool(CommandIfaceList.Name, false, CommandIfaceList.usage)},
+	Command{CommandFlag: &CommandBindIface, Value: flag.String(CommandBindIface.Name, "以太网", CommandBindIface.usage)},
 	Command{CommandFlag: &CommandMac, Value: flag.String(CommandMac.Name, "", CommandMac.usage)},
 	Command{CommandFlag: &CommandSecs, Value: flag.Duration(CommandSecs.Name, 10*time.Second, CommandSecs.usage)},
 	Command{CommandFlag: &CommandQuiet, Value: flag.Bool(CommandQuiet.Name, false, CommandQuiet.usage)},
@@ -109,11 +109,11 @@ func (c Command) Print() {
 			fmt.Printf("  %d\t%s\n", byte(opt), opt)
 		}
 
-	case &CommandIPList:
+	case &CommandIfaceList:
 		fmt.Println("only support ipv4 for now")
 		fmt.Println("  ip\t\t网卡")
-		for  ip, iface := range ValidIP {
-			fmt.Printf("  %s\t%s\n", ip, iface.Name)
+		for  name, iface := range ValidIface {
+			fmt.Printf("  %s\t%s\n", name, iface.HardwareAddr)
 		}
 
 	default:
@@ -124,6 +124,8 @@ func (c Command) Print() {
 func init() {
 	ifaces, _ := net.Interfaces()
 	for _, iface := range ifaces {
+		ValidIface[iface.Name] = iface
+		/*
 		addrs, _ := (&iface).Addrs()
 		for _, addr := range addrs {
 			ipAddr, _, _ := net.ParseCIDR(addr.String())
@@ -135,6 +137,7 @@ func init() {
 				ValidIP[ipAddr.String()] = iface
 			}
 		}
+		*/
 	}
 
 	flag.Var(&optionRequest, CommandOption.Name, CommandOption.usage)
@@ -147,15 +150,15 @@ func init() {
 func getOpts() {
 	for _, command := range CommandList {
 		switch command.CommandFlag {
-		case &CommandHelp, &CommandOptionHelp, &CommandIPList:
+		case &CommandHelp, &CommandOptionHelp, &CommandIfaceList:
 			Help = *(command.Value.(*bool))
 			if Help {
 				command.Print()
 				os.Exit(0)
 			}
 			break
-		case &CommandBindIP:
-			BindIP = *command.Value.(*string)
+		case &CommandBindIface:
+			BindIface = *command.Value.(*string)
 			break
 		case &CommandMac:
 			BindMac = *command.Value.(*string)

@@ -31,7 +31,7 @@ func init() {
 func main() {
 
 	//bind ip
-	iface, err :=utility.GetInterfaceByIP(utility.BindIP, utility.ValidIP)
+	iface, err :=utility.GetInterfaceByName(utility.BindIface, utility.ValidIface)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -68,10 +68,8 @@ func main() {
 	*/
 
 	dc := &connection.DhcpClient{
-		BindIP:    net.ParseIP(utility.BindIP),
 		//ClientMac: clientMac,
 		Iface:     iface,
-		Raddr:     net.UDPAddr{IP:net.IPv4bcast, Port: 67},
 	}
 	dc.Open()
 	defer dc.Close()

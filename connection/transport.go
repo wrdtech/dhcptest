@@ -4,6 +4,7 @@ import (
 	"dhcptest/layers"
 	"fmt"
 	"github.com/libp2p/go-reuseport"
+	"github.com/mdlayher/raw"
 	"github.com/pinterest/bender"
 	"math/rand"
 	"net"
@@ -11,7 +12,7 @@ import (
 
 type Dialer func(*net.UDPAddr, *net.UDPAddr) (net.Conn, error)
 
-type Listener func(*net.UDPAddr) (net.PacketConn, error)
+type Listener func(*net.Interface) (net.PacketConn, error)
 
 type TransPort struct {
 	Dialer Dialer
@@ -22,7 +23,7 @@ func (t *TransPort) Dial(l *net.UDPAddr, r *net.UDPAddr) (net.Conn, error) {
 	return t.Dialer(l,r)
 }
 
-func (t *TransPort) Listen(l *net.UDPAddr) (net.PacketConn, error) {
+func (t *TransPort) Listen(l *net.Interface) (net.PacketConn, error) {
 	return t.Listener(l)
 }
 
@@ -38,8 +39,8 @@ func UDPDialer() Dialer {
 }
 
 func UDPListener() Listener {
-	return func(l *net.UDPAddr) (net.PacketConn, error) {
-		packetConn, err := reuseport.ListenPacket("udp", l.String())
+	return func(iface *net.Interface) (net.PacketConn, error) {
+		packetConn , err := raw.ListenPacket(iface, uint16(layers.EthernetTypeIPv4), nil)
 		if err != nil {
 			return nil, err
 		}

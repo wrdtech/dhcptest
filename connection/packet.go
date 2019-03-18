@@ -57,7 +57,7 @@ func NewRequestFromOffer(packet *layers.DHCPv4) *layers.DHCPv4 {
 }
 
 func ParsePacket(data []byte) *layers.DHCPv4 {
-	packet := gopacket.NewPacket(data, layers.LayerTypeDHCPv4, gopacket.Default)
+	packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
 
 	dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
 

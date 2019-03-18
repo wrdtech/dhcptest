@@ -5,6 +5,7 @@ import (
 	"dhcptest/utility"
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/mdlayher/raw"
 	"log"
 	"net"
 	"sync"
@@ -15,15 +16,12 @@ type Callback func(*Lease)
 
 //DhcpClient
 type DhcpClient struct {
-	BindIP net.IP
 	//ClientMac net.HardwareAddr
 	Iface *net.Interface
 	BufferSize int
-	Raddr net.UDPAddr
 	ifRequest bool
 	ifLog     bool
 	connection net.PacketConn
-	laddr net.UDPAddr
 	logger *utility.Log
 	sendQueue chan *layers.DHCPv4
 	messages chan interface{}
@@ -42,10 +40,10 @@ func (dc *DhcpClient) Open() error {
 	dc.packetsLock = new(sync.Mutex)
 	dc.wg = new(sync.WaitGroup)
 	dc.logger = &utility.Log{Logger: utility.DHCPLogger()}
-	dc.laddr = net.UDPAddr{IP: dc.BindIP, Port: 68}
 	var err error
-	dc.connection, err = UDPListener()(&dc.laddr)
+	dc.connection, err = UDPListener()(dc.Iface)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
 	return nil
@@ -156,21 +154,40 @@ func (dc *DhcpClient) stopWorkers() {
 
 func (dc *DhcpClient) send(packet *layers.DHCPv4) error {
 
+	eth := layers.Ethernet{
+		EthernetType: layers.EthernetTypeIPv4,
+		SrcMAC: dc.Iface.HardwareAddr,
+		DstMAC: layers.EthernetBroadcast,
+	}
+
+	ip := layers.IPv4{
+		Version: 4,
+		TTL:    64,
+		SrcIP:  net.IPv4(0, 0, 0, 0),
+		DstIP:  net.IPv4bcast,
+		Protocol: layers.IPProtocolUDP,
+	}
+
+	udp := layers.UDP{
+		SrcPort: 68,
+		DstPort: 67,
+	}
+
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		ComputeChecksums: true,
 		FixLengths: true,
 	}
+	udp.SetNetworkLayerForChecksum(&ip)
 
-	err := gopacket.SerializeLayers(buf, opts, packet)
+	err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, packet)
 
 	if err != nil {
 		return err
 	}
 
 	dc.connection.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
-	_, err = dc.connection.WriteTo(buf.Bytes(), &dc.Raddr)
-
+	_, err = dc.connection.WriteTo(buf.Bytes(), &raw.Addr{HardwareAddr:eth.DstMAC})
 	return err
 }
 
@@ -295,11 +312,6 @@ func (dc *DhcpClient) listenLoop() {
 		}
 	}
 }
-
-func (dc *DhcpClient) GetAddr() *net.UDPAddr {
-	return &dc.laddr
-}
-
 
 func (dc *DhcpClient) Send(packet *layers.DHCPv4, modifiers ...Modifier) *PacketResponse {
 	for _, modifier := range modifiers {
