@@ -40,7 +40,7 @@ func ParseIPs(data []byte) []net.IP {
 }
 
 
-func getFileString(data []byte) string {
+func GetFileString(data []byte) string {
 	if len(data) == 0 {
 		return ""
 	}
@@ -51,4 +51,27 @@ func getFileString(data []byte) string {
 		return string(data)
 	}
 	return ""
+}
+
+func GetUnicastIPofInterface(ifi *net.Interface) ([]net.IP, error) {
+	res := make([]net.IP, 0)
+	addrs , err := ifi.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, addr := range addrs {
+		ipAddr, _, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			return nil, err
+		}
+		ipAddr = ipAddr.To4()
+		if ipAddr == nil {
+			continue
+		}
+		if ipAddr.IsGlobalUnicast() {
+			res = append(res, ipAddr)
+		}
+	}
+	return res, nil
+
 }

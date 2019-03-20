@@ -1,3 +1,5 @@
+// +build !windows
+
 package connection
 
 import (
@@ -285,7 +287,7 @@ func (dc *DhcpClient) listenLoop() {
 				continue
 			}
 
-			packet := ParsePacket(recvBuf)
+			packet := ParsePacket(recvBuf, layers.LayerTypeEthernet)
 
 			if packet == nil {
 				continue

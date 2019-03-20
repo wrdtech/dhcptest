@@ -111,9 +111,9 @@ func (c Command) Print() {
 
 	case &CommandIfaceList:
 		fmt.Println("only support ipv4 for now")
-		fmt.Println("  ip\t\t网卡")
+		fmt.Println("  网卡\t\tMAC地址")
 		for  name, iface := range ValidIface {
-			fmt.Printf("  %s\t%s\n", name, iface.HardwareAddr)
+			fmt.Printf("  %s\t\t%s\n", name, iface.HardwareAddr)
 		}
 
 	default:
@@ -125,19 +125,6 @@ func init() {
 	ifaces, _ := net.Interfaces()
 	for _, iface := range ifaces {
 		ValidIface[iface.Name] = iface
-		/*
-		addrs, _ := (&iface).Addrs()
-		for _, addr := range addrs {
-			ipAddr, _, _ := net.ParseCIDR(addr.String())
-			ipAddr = ipAddr.To4()
-			if ipAddr == nil {
-				continue
-			}
-			if ipAddr.IsGlobalUnicast() {
-				ValidIP[ipAddr.String()] = iface
-			}
-		}
-		*/
 	}
 
 	flag.Var(&optionRequest, CommandOption.Name, CommandOption.usage)

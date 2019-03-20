@@ -1,3 +1,5 @@
+// +build !windows
+
 package main
 
 import (
@@ -71,7 +73,11 @@ func main() {
 		//ClientMac: clientMac,
 		Iface:     iface,
 	}
-	dc.Open()
+	err = dc.Open()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	defer dc.Close()
 
 	inputReader := bufio.NewReader(os.Stdin)

@@ -24,7 +24,7 @@ func DHCPLogger() Logger {
 			//fmt.Printf("%+v\n", dhcpPacket)
 			fmt.Printf("  op=%s  chaddr=%s  hops=%d  xid=%x  secs=%d  flags=%s\n", dhcpPacket.Operation, dhcpPacket.ClientHWAddr, dhcpPacket.HardwareOpts, dhcpPacket.Xid, dhcpPacket.Secs, layers.BootpFlag(dhcpPacket.Flags))
 			fmt.Printf("  ciaddr=%s  yiaddr=%s  siaddr=%s  giaddr=%s  sname=%s file=%s\n", dhcpPacket.ClientIP, dhcpPacket.YourClientIP, dhcpPacket.NextServerIP, dhcpPacket.RelayAgentIP,
-				getFileString(dhcpPacket.ServerName),getFileString(dhcpPacket.File))
+				GetFileString(dhcpPacket.ServerName),GetFileString(dhcpPacket.File))
 			dhcpOptions := dhcpPacket.Options
 			fmt.Printf("  %d options:\n", len(dhcpOptions))
 			for _, option := range dhcpOptions {

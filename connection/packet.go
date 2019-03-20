@@ -51,13 +51,14 @@ func NewRequestFromOffer(packet *layers.DHCPv4) *layers.DHCPv4 {
 	serverID := []byte(lease.ServerID)
 	requestPacket := NewPacket(utility.DhcpOptions...)
 	WithReply(packet)(requestPacket)
-	packet.AddOption(layers.DHCPOptRequestIP, fixedAddress)
-	packet.AddOption(layers.DHCPOptServerID, serverID)
+	WithMessageType(layers.DHCPMsgTypeRequest)(requestPacket)
+	requestPacket.AddOption(layers.DHCPOptRequestIP, fixedAddress)
+	requestPacket.AddOption(layers.DHCPOptServerID, serverID)
 	return requestPacket
 }
 
-func ParsePacket(data []byte) *layers.DHCPv4 {
-	packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
+func ParsePacket(data []byte, decoder gopacket.Decoder) *layers.DHCPv4 {
+	packet := gopacket.NewPacket(data, decoder, gopacket.Default)
 
 	dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
 
