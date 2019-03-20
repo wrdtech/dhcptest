@@ -219,13 +219,13 @@ func (dc *DhcpClient) sendLoop() {
 					pr.Call(NewEvent(requestDequeue, packet))
 				}
 				err := dc.send(packet)
+				if err != nil {
+					dc.addMessage(err)
+				}
 				if dc.ifLog {
 					dc.addMessage(packet)
 				} else {
 					dc.requestSend <- 1
-				}
-				if err != nil {
-					dc.addMessage(err)
 				}
 			} else {
 				dc.addMessage(fmt.Errorf("xid %d not found in packets\n", packet.Xid))

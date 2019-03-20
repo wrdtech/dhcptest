@@ -230,13 +230,14 @@ func (dc *DhcpClient) sendLoop() {
 				} else if packet.MessageType() == layers.DHCPMsgTypeRequest {
 					pr.Call(NewEvent(requestDequeue, packet))
 				}
-				if dc.ifLog {
-					dc.addMessage(packet)
-				}
 				err := dc.send(packet)
-				dc.requestSend <- 1
 				if err != nil {
 					dc.addMessage(err)
+				}
+				if dc.ifLog {
+					dc.addMessage(packet)
+				} else {
+					dc.requestSend <- 1
 				}
 			} else {
 				dc.addMessage(fmt.Errorf("xid %d not found in packets\n", packet.Xid))
@@ -294,9 +295,11 @@ func (dc *DhcpClient) listenLoop() {
 			}
 			dc.packetsLock.Lock()
 			if pr, ok := dc.packets[packet.Xid];ok && packet.Operation == layers.DHCPOpReply {
-				dc.responseSend <- 1
 				if dc.ifLog {
 					dc.addMessage(packet)
+				} else {
+					dc.responseSend <- 1
+
 				}
 				if packet.MessageType() == layers.DHCPMsgTypeOffer {
 					pr.Call(NewEvent(receivedOffer, packet))
