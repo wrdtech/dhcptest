@@ -795,10 +795,10 @@ func (o DHCPOption) String() string {
 		}
 		return buf.String()
 	case DHCPOptClientID:
-		if len(o.Data) != 6 {
+		if len(o.Data) < 2 {
 			return fmt.Sprintf("%d (%s): INVALID", byte(o.Type), o.Type)
 		}
-		return fmt.Sprintf("%d (%s): %s", byte(o.Type), o.Type, net.HardwareAddr(o.Data))
+		return fmt.Sprintf("%d (%s): %v", byte(o.Type), o.Type, o.Data)
 	case DHCPOptDNS:
 		if len(o.Data) % 4 != 0 {
 			return fmt.Sprint("%d (%s): INVALID", byte(o.Type), o.Type)
