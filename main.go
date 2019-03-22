@@ -1,5 +1,3 @@
-// +build !windows
-
 package main
 
 import (
@@ -21,12 +19,13 @@ import (
 var (
 	intervalC chan int
 	loggerC chan int
+	clientMacs []net.HardwareAddr
 )
 
 func init() {
 	intervalC = make(chan int)
 	loggerC = make(chan int)
-	fmt.Println("dhcptest v0.1 -Created by WRD, based on gopacket")
+	fmt.Println("dhcptest tool Created by WRD, based on gopacket")
 	fmt.Println("Run with --help for a list of command-line options")
 }
 
@@ -39,14 +38,15 @@ func main() {
 		return
 	}
 
-	/*
-	//bind mac
-	clientMac, err := net.ParseMAC(utility.BindMac)
-	if err != nil {
-		fmt.Println(err)
-		return
+	//mac
+	for _, mac := range utility.BindMac {
+		clientMac, err := net.ParseMAC(mac)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		clientMacs = append(clientMacs, clientMac)
 	}
-	*/
 
 	//option
 	parser := &utility.Parser{}
@@ -137,8 +137,8 @@ func main() {
 func sendDHCP(params []string, dc *connection.DhcpClient, ifRequest bool) error {
 	//init deviceNum
 	deviceNum := 1
+	var err error
 	if len(params) >= 2 {
-		var err error
 		deviceNum, err = strconv.Atoi(params[1])
 		if err != nil {
 			return err
@@ -147,10 +147,15 @@ func sendDHCP(params []string, dc *connection.DhcpClient, ifRequest bool) error 
 	fmt.Printf("the %d device mac is: ", deviceNum)
 	var macList []net.HardwareAddr
 	for i:=0; i< deviceNum; i++ {
-		mac, err := net.ParseMAC(utility.RandomMac())
-		time.Sleep(time.Millisecond) //only ensure time seed different
-		if err != nil {
-			return err
+		var mac net.HardwareAddr
+		if i < len(clientMacs) {
+			mac = clientMacs[i]
+		} else {
+			mac, err = net.ParseMAC(utility.RandomMac())
+			time.Sleep(time.Millisecond) //only ensure time seed different
+			if err != nil {
+				return err
+			}
 		}
 		macList = append(macList, mac)
 		fmt.Printf("%s ", mac)
@@ -239,8 +244,8 @@ func sendDHCP(params []string, dc *connection.DhcpClient, ifRequest bool) error 
 				case <-ticker.C:
 					request, response := dc.GetRequestAndResponse()
 					now_time := time.Now()
-					during := int(now_time.Sub(current_time).Seconds())
-					log.Printf("request: %d, response: %d, during: %d, qSpeed: %d, pSpeed: %d", request, response, during, request / during, response/during)
+					during := now_time.Sub(current_time).Seconds()
+					log.Printf("request: %d, response: %d, during: %d, qSpeed: %.2f, pSpeed: %.2f", request, response, int(during), float64(request) / during, float64(response)/during)
 				case <-loggerC:
 					log.Println("logger stop")
 					return

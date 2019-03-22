@@ -1,4 +1,3 @@
 /.idea/
-/*.exe
-/main
 /*.prof
+/dhcptest*
