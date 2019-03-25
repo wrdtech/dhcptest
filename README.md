@@ -17,7 +17,7 @@ dhcp-test-tool是一个用go语言编写的，可跨平台的DHCP性能测试工
 
 首先从github上克隆项目到本地的$GOPATH/src目录中去
 ```sh
-cd $GOPATH
+cd $GOPATH/src
 git clone https://github.com/wrdtech/dhcptest.git
 ```
 
